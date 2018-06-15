@@ -129,7 +129,7 @@ class YarnCluster(object):
         return self._scheduler_address
 
     def __repr__(self):
-        if hasattr(self._scheduler_address):
+        if hasattr(self, '_scheduler_address'):
             return 'YarnCluster<%r>' % self._scheduler_address
         return 'YarnCluster<"pending connection">'
 
@@ -138,7 +138,7 @@ class YarnCluster(object):
             client = self._dask_client_ref()
             if client is not None:
                 return client
-        client = get_client()
+        client = get_client(address=self.scheduler_address)
         self._dask_client_ref = weakref.ref(client)
         return client
 
