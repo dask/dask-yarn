@@ -44,16 +44,18 @@ def make_remote_spec(environment, name='dask', queue='default', tags=None,
                               resources=skein.Resources(vcores=scheduler_vcores,
                                                         memory=scheduler_memory),
                               max_restarts=0,
+                              env={'DASK_CONFIG': '.config'},
                               files={'environment': environment},
-                              commands=['source activate environment/bin/activate',
+                              commands=['source environment/bin/activate',
                                         'dask-yarn-scheduler'])
     worker = skein.Service(instances=n_workers,
                            resources=skein.Resources(vcores=worker_vcores,
                                                      memory=worker_memory),
                            max_restarts=worker_max_restarts,
                            depends=['dask.scheduler'],
+                           env={'DASK_CONFIG': '.config'},
                            files={'environment': environment},
-                           commands=['source activate environment/bin/activate',
+                           commands=['source environment/bin/activate',
                                      ('dask-yarn-worker %d --memory_limit %dMB'
                                       % (worker_vcores, worker_memory))])
 

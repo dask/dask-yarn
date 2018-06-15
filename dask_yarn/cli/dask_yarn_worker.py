@@ -3,7 +3,8 @@ from __future__ import print_function, division, absolute_import
 import argparse
 
 import skein
-from distributed import Nanny
+import dask.config
+from distributed import Nanny, Worker
 from distributed.utils import ignoring
 from distributed.cli.utils import install_signal_handlers
 from distributed.proctitle import (enable_proctitle_on_children,
@@ -36,19 +37,25 @@ def start_worker(nthreads, memory_limit="auto"):
 
     loop = IOLoop.current()
 
-    nanny = Nanny(scheduler, ncores=nthreads, services=services, loop=loop,
-                  memory_limit=memory_limit, worker_port=0)
+    # Until the config patch is merged, we can't use the nanny process since
+    # there's no way to monkey patch config inside the forkserver process
+    if hasattr(dask.config, 'DASK_CONFIG'):
+        worker = Nanny(scheduler, ncores=nthreads, services=services, loop=loop,
+                       memory_limit=memory_limit, worker_port=0)
 
-    @gen.coroutine
-    def close(signalnum):
-        nanny._close(timeout=2)
+        @gen.coroutine
+        def close(signalnum):
+            worker._close(timeout=2)
 
-    install_signal_handlers(loop, cleanup=close)
+        install_signal_handlers(loop, cleanup=close)
+    else:
+        worker = Worker(scheduler, ncores=nthreads, services=services, loop=loop,
+                        memory_limit=memory_limit)
 
     @gen.coroutine
     def run():
-        yield nanny._start(None)
-        while nanny.status != 'closed':
+        yield worker._start(None)
+        while worker.status != 'closed':
             yield gen.sleep(0.2)
 
     try:
