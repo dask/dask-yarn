@@ -1,5 +1,8 @@
 from __future__ import absolute_import, print_function, division
 
+import weakref
+
+from distributed import get_client
 
 import skein
 
@@ -124,6 +127,15 @@ class YarnCluster(object):
             self.wait_for_scheduler()
         return self._scheduler_address
 
+    def _dask_client(self):
+        if hasattr(self, '_dask_client_ref'):
+            client = self._dask_client_ref()
+            if client is not None:
+                return client
+        client = get_client()
+        self._dask_client_ref = weakref.ref(client)
+        return client
+
     def close(self):
         """Close this cluster"""
         self._finalize()
@@ -133,3 +145,68 @@ class YarnCluster(object):
 
     def __exit__(self, *args):
         self.close()
+
+    def workers(self):
+        """A list of all currently running worker containers."""
+        return self.application_client.containers(services=['dask.worker'])
+
+    def scale_up(self, n, workers=None):
+        """Ensure there are atleast n dask workers available for this cluster.
+
+        No-op if ``n`` is less than the current number of workers.
+
+        Examples
+        --------
+        >>> cluster.scale_up(20)  # ask for twenty workers
+        """
+        if workers is None:
+            workers = self.workers()
+        if n > len(workers):
+            self.application_client.scale(service='dask.worker', instances=n)
+
+    def scale_down(self, workers):
+        """Retire the selected workers.
+
+        Parameters
+        ----------
+        workers: list
+            List of addresses of workers to close.
+        """
+        self._dask_client().retire_workers(workers)
+
+    def _select_workers_to_close(self, n):
+        client = self._dask_client()
+        worker_info = client.scheduler_info()['workers']
+        # Sort workers by memory used
+        workers = sorted((v['memory'], k) for k, v in worker_info.items())
+        # Return just the ips
+        return [w[1] for w in workers[:n]]
+
+    def scale(self, n):
+        """Scale cluster to n workers.
+
+        Parameters
+        ----------
+        n : int
+            Target number of workers
+
+        Example
+        -------
+        >>> cluster.scale(10)  # scale cluster to ten workers
+        """
+        workers = self.workers()
+        if n >= len(workers):
+            return self.scale_up(n, workers=workers)
+        else:
+            n_to_delete = len(workers) - n
+            # Before trying to close running workers, check if there are any
+            # pending containers and kill those first.
+            pending = [w for w in workers if w.state in ('waiting', 'requested')]
+
+            for c in pending[:n_to_delete]:
+                self.application_client.kill(c.id)
+                n_to_delete -= 1
+
+            if n_to_delete:
+                to_close = self._select_workers_to_close(n_to_delete)
+                self.scale_down(to_close)
