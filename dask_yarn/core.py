@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import weakref
 
 from distributed import get_client
+from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
 import skein
 
@@ -215,3 +216,77 @@ class YarnCluster(object):
             if n_to_delete:
                 to_close = self._select_workers_to_close(n_to_delete)
                 self.scale_down(to_close)
+
+    def _widget_status(self):
+        client = self._dask_client()
+
+        workers = client.scheduler_info()['workers']
+
+        n_workers = len(workers)
+        cores = sum(w['ncores'] for w in workers.values())
+        memory = sum(w['memory_limit'] for w in workers.values())
+
+        text = """
+<div>
+  <style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+  </style>
+  <table style="text-align: right;">
+    <tr><th>Workers</th> <td>%d</td></tr>
+    <tr><th>Cores</th> <td>%d</td></tr>
+    <tr><th>Memory</th> <td>%s</td></tr>
+  </table>
+</div>
+""" % (n_workers, cores, format_bytes(memory))
+        return text
+
+    def _widget(self):
+        """ Create IPython widget for display within a notebook """
+        try:
+            return self._cached_widget
+        except AttributeError:
+            pass
+
+        client = self._dask_client()
+
+        from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML
+
+        layout = Layout(width='150px')
+
+        title = HTML('<h2>YarnCluster</h2>')
+
+        status = HTML(self._widget_status(), layout=Layout(min_width='150px'))
+
+        request = IntText(0, description='Workers', layout=layout)
+        scale = Button(description='Scale', layout=layout)
+
+        @scale.on_click
+        def scale_cb(b):
+            with log_errors():
+                self.scale(request.value)
+
+        box = VBox([title,
+                    HBox([status, request, scale])])
+
+        self._cached_widget = box
+
+        def update():
+            status.value = self._widget_status()
+
+        pc = PeriodicCallback(update, 500, io_loop=client.loop)
+        pc.start()
+
+        return box
+
+    def _ipython_display_(self, **kwargs):
+        return self._widget()._ipython_display_(**kwargs)
