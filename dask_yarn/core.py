@@ -127,6 +127,11 @@ class YarnCluster(object):
             self.wait_for_scheduler()
         return self._scheduler_address
 
+    def __repr__(self):
+        if hasattr(self._scheduler_address):
+            return 'YarnCluster<%r>' % self._scheduler_address
+        return 'YarnCluster<"pending connection">'
+
     def _dask_client(self):
         if hasattr(self, '_dask_client_ref'):
             client = self._dask_client_ref()
