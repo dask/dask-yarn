@@ -100,7 +100,7 @@ class YarnCluster(object):
         -------
         cluster : YarnCluster
         """
-        self = super(YarnCluster, cls).__name__(cls)
+        self = super(YarnCluster, cls).__new__(cls)
         self.application_client = skein.ApplicationClient.from_current()
         return self
 
@@ -119,7 +119,7 @@ class YarnCluster(object):
         -------
         cluster : YarnCluster
         """
-        self = super(YarnCluster, cls).__name__(cls)
+        self = super(YarnCluster, cls).__new__(cls)
 
         if skein_client is None:
             skein_client = skein.Client()
@@ -269,9 +269,9 @@ class YarnCluster(object):
         except AttributeError:
             pass
 
-        client = self._dask_client()
-
         from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML
+
+        client = self._dask_client()
 
         layout = Layout(width='150px')
 
@@ -301,4 +301,7 @@ class YarnCluster(object):
         return box
 
     def _ipython_display_(self, **kwargs):
-        return self._widget()._ipython_display_(**kwargs)
+        try:
+            return self._widget()._ipython_display_(**kwargs)
+        except ImportError:
+            print(self)
