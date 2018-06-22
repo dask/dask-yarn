@@ -102,6 +102,8 @@ class YarnCluster(object):
         """
         self = super(YarnCluster, cls).__new__(cls)
         self.application_client = skein.ApplicationClient.from_current()
+        # will happen immediately, since inside existing cluster
+        self.wait_for_scheduler()
         return self
 
     @classmethod
