@@ -93,6 +93,18 @@ class YarnCluster(object):
         self.application_client = app.connect()
 
     @classmethod
+    def from_current(cls):
+        """Create a ``YarnCluster`` from within a running skein application.
+
+        Returns
+        -------
+        cluster : YarnCluster
+        """
+        self = super(YarnCluster, cls).__name__(cls)
+        self.application_client = skein.ApplicationClient.from_current()
+        return self
+
+    @classmethod
     def from_application_id(cls, app_id, skein_client=None):
         """Create a ``YarnCluster`` from an existing skein application.
 
