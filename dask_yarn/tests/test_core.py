@@ -1,12 +1,11 @@
 import conda_pack
 
 import dask_yarn
-from dask_yarn import YarnCluster, make_remote_spec
-from dask.distributed import Client, wait
-from distributed.utils_test import loop, inc
+from dask_yarn import YarnCluster
+from dask.distributed import Client
+from distributed.utils_test import loop, inc  # noqa: F811, F401
 import time
 import skein
-import toolz
 import os
 
 import pytest
@@ -45,7 +44,7 @@ def clean(skein_client):
         skein_client.kill(app)
 
 
-def test_basic(loop, spec, clean):
+def test_basic(loop, spec, clean):  # noqa F811
     with YarnCluster(spec) as cluster:
         cluster.scale(2)
         with Client(cluster, loop=loop) as client:
