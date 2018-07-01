@@ -60,7 +60,7 @@ def test_basic(loop, spec, clean):  # noqa F811
 
 
 def test_yaml_file(loop, spec, clean, tmpdir):  # noqa F811
-    fn = os.path.join(tmpdir, 'spec.yaml')
+    fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
         f.write(spec.to_yaml())
 
