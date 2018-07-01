@@ -17,7 +17,11 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install grpcio-tools conda-pack
+pip install grpcio-tools conda-pack 
+
+pip install git+https://github.com/jcrist/skein
+
+skein init
 
 cd ~/dask-yarn
 pip install -v --no-deps .
