@@ -46,7 +46,7 @@ install:
 
 script:
     - set -e
-    - export CONDA_ENV="/home/testuser/miniconda/envs/test-environment
+    - export CONDA_ENV=/home/testuser/miniconda/envs/test-environment
     - |
       if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
         htcluster exec -- kinit testuser -kt testuser.keytab

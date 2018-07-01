@@ -12,7 +12,7 @@ conda create -n test-environment \
     maven \
     nomkl \
     pytest \
-    python=$PYTHON \
+    python=$1 \
     pyyaml
 
 source activate test-environment
