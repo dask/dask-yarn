@@ -13,7 +13,7 @@ memory_warning = """
 The memory keywords takes string parameters
 that include units like "4 GiB" or "2048 MB"
 
-You provided: %d
+You provided:       %d
 Perhaps you meant: "%d MB"
 """
 
@@ -149,6 +149,8 @@ class YarnCluster(object):
         See ``make_specification`` for more details
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
+    **kwargs:
+        Extra keyword arguments to pass to make_specification if necessary
 
     Examples
     --------
@@ -161,6 +163,10 @@ class YarnCluster(object):
             spec = dask.config.get('yarn.specification')
         if spec is None:
             spec = make_specification(**kwargs)
+        else:
+            if kwargs:
+                raise ValueError("A full specification was found "
+                                 "so keyword arguments were not used")
         if skein_client is None:
             skein_client = skein.Client()
 

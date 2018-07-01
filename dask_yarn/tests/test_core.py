@@ -103,6 +103,19 @@ def test_config_env(loop, env):  # noqa F811
                 assert w['memory_limit'] == 1234e6
 
 
+def test_constructor_keyword_arguments(loop, env, spec):  # noqa F811
+    with YarnCluster(environment=env) as cluster:
+        with Client(cluster, loop=loop):
+            pass
+
+    with pytest.raises(ValueError) as info:
+        with YarnCluster(spec, environment=env):
+            pass
+
+    assert "keyword" in str(info.value)
+    assert "not used" in str(info.value)
+
+
 def test_config_errors():
     with dask.config.set({'yarn.environment': None}):
         with pytest.raises(ValueError) as info:
