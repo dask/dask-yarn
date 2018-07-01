@@ -57,3 +57,13 @@ def test_basic(loop, spec, clean):  # noqa F811
                 assert time.time() < start + 5
 
             client.get_versions(check=True)
+
+
+def test_yaml_file(loop, spec, clean, tmpdir):
+    fn = os.path.join(tmpdir, 'spec.yaml')
+    with open(fn, 'w') as f:
+        f.write(spec.to_yaml())
+
+    with YarnCluster(fn) as cluster:
+        with Client(cluster, loop=loop) as client:
+            pass
