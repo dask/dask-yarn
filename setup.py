@@ -5,6 +5,7 @@ setup(name='dask-yarn',
       license='BSD',
       description='Deploy dask clusters on Apache YARN',
       packages=['dask_yarn', 'dask_yarn.cli'],
+      include_package_data=True,
       install_requires=['distributed', 'skein'],
       entry_points='''
         [console_scripts]

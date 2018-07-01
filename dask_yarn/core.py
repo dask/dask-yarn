@@ -2,20 +2,41 @@ from __future__ import absolute_import, print_function, division
 
 import weakref
 
-from distributed import get_client
+import dask
+from dask.distributed import get_client
 from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
 import skein
 
+memory_warning = """
 
-def make_specification(environment, name='dask', queue='default', tags=None,
-                       n_workers=0, worker_vcores=1, worker_memory=2048,
-                       worker_max_restarts=-1, scheduler_vcores=1,
-                       scheduler_memory=2048):
+The memory keywords takes string parameters
+that include units like "4 GiB" or "2048 MB"
+
+You provided: %d
+Perhaps you meant: "%d MB"
+"""
+
+
+def make_specification(
+        environment=None,
+        name=None,
+        queue=None,
+        tags=None,
+        n_workers=None,
+        worker_vcores=None,
+        worker_memory=None,
+        worker_max_restarts=None,
+        scheduler_vcores=None,
+        scheduler_memory=None):
     """ Create specification to run Dask Cluster
 
     This creates a ``skein.ApplicationSpec`` to run a dask cluster with the
     scheduler in a YARN container.
+
+    You can define default values for this in Dask's ``yarn.yaml`` configuration
+    file.  See http://dask.pydata.org/en/latest/configuration.html for more
+    information.
 
     Parameters
     ----------
@@ -31,38 +52,81 @@ def make_specification(environment, name='dask', queue='default', tags=None,
         The number of workers to initially start.
     worker_vcores : int, optional
         The number of virtual cores to allocate per worker.
-    worker_memory : int, optional
-        The ammount of memory in MB to allocate per worker.
+    worker_memory : str, optional
+        The ammount of memory to allocate per worker like '2GB' or '4096 MiB'.
     worker_max_restarts : int, optional
         The maximum number of worker restarts to allow before failing the
         application. Default is unlimited.
     scheduler_vcores : int, optional
         The number of virtual cores to allocate per scheduler.
-    scheduler_memory : int, optional
-        The ammount of memory in MB to allocate per scheduler.
+    scheduler_memory : str, optional
+        The ammount of memory to allocate to the scheduler like '2GB' or '4096 MiB'.
 
     Returns
     -------
     spec : skein.ApplicationSpec
         The application specification.
     """
+    if environment is None:
+        environment = dask.config.get('yarn.environment')
+    if name is None:
+        name = dask.config.get('yarn.name')
+    if queue is None:
+        queue = dask.config.get('yarn.queue')
+    if tags is None:
+        tags = dask.config.get('yarn.tags')
+    if n_workers is None:
+        n_workers = dask.config.get('yarn.workers.instances')
+    if worker_vcores is None:
+        worker_vcores = dask.config.get('yarn.workers.vcores')
+    if worker_memory is None:
+        worker_memory = dask.config.get('yarn.workers.memory')
+    if worker_max_restarts is None:
+        worker_max_restarts = dask.config.get('yarn.workers.restarts')
+    if scheduler_vcores is None:
+        scheduler_vcores = dask.config.get('yarn.scheduler.vcores')
+    if scheduler_memory is None:
+        scheduler_memory = dask.config.get('yarn.scheduler.memory')
+
+    if environment is None:
+        msg = ("You must provide a path to a redeployable environment for the "
+               "workers.\n"
+               "This is commonly achieved through conda-pack.\n\n"
+               "See https://dask-yarn.readthedocs.org/en/latest/environments.html "
+               "for more information")
+        raise ValueError(msg)
+
+    if isinstance(scheduler_memory, str):
+        scheduler_memory = dask.utils.parse_bytes(scheduler_memory)
+    if isinstance(worker_memory, str):
+        worker_memory = dask.utils.parse_bytes(worker_memory)
+
+    if scheduler_memory < 2**20:
+        raise ValueError(memory_warning % (scheduler_memory, scheduler_memory))
+    if worker_memory < 2**20:
+        raise ValueError(memory_warning % (worker_memory, worker_memory))
+
     scheduler = skein.Service(instances=1,
-                              resources=skein.Resources(vcores=scheduler_vcores,
-                                                        memory=scheduler_memory),
+                              resources=skein.Resources(
+                                  vcores=scheduler_vcores,
+                                  memory=int(scheduler_memory / 1e6)
+                              ),
                               max_restarts=0,
                               env={'DASK_CONFIG': '.config'},
                               files={'environment': environment},
                               commands=['source environment/bin/activate',
                                         'dask-yarn-scheduler'])
     worker = skein.Service(instances=n_workers,
-                           resources=skein.Resources(vcores=worker_vcores,
-                                                     memory=worker_memory),
+                           resources=skein.Resources(
+                               vcores=worker_vcores,
+                               memory=int(worker_memory / 1e6)
+                           ),
                            max_restarts=worker_max_restarts,
                            depends=['dask.scheduler'],
                            env={'DASK_CONFIG': '.config'},
                            files={'environment': environment},
                            commands=['source environment/bin/activate',
-                                     ('dask-yarn-worker %d --memory_limit %dMB'
+                                     ('dask-yarn-worker %d --memory_limit %d'
                                       % (worker_vcores, worker_memory))])
 
     spec = skein.ApplicationSpec(name=name,
@@ -92,7 +156,11 @@ class YarnCluster(object):
     >>> cluster = YarnCluster(spec)
     >>> cluster.scale(10)
     """
-    def __init__(self, spec, skein_client=None):
+    def __init__(self, spec=None, skein_client=None, **kwargs):
+        if spec is None:
+            spec = dask.config.get('yarn.specification')
+        if spec is None:
+            spec = make_specification(**kwargs)
         if skein_client is None:
             skein_client = skein.Client()
 

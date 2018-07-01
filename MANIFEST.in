@@ -1,0 +1,12 @@
+recursive-include dask_yarn *.py
+recursive-include dask_yarn *.yaml
+
+include LICENSE.txt
+include README.rst
+
+include requirements.txt
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+include versioneer.py
+include dask_yarn/_version.py
