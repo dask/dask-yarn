@@ -9,7 +9,6 @@ conda create -n test-environment \
     distributed \
     flake8 \
     grpcio \
-    maven \
     nomkl \
     pytest \
     python=$1 \
