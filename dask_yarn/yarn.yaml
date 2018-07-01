@@ -1,0 +1,17 @@
+yarn:
+  specification: null        # A full Skein specification
+                             # or path to a specification yaml file
+                             # Overwrites the following configuraiton if given
+
+  name: dask                 # Application name
+  queue: default             # Yarn queue to deploy to
+  environment: null          # Path to conda packed environment
+  tags: []                   # List of strings to tag applications
+  scheduler:                 # Specifications of scheduler container
+    vcores: 1
+    memory: 2GiB
+  workers:                   # Specifications of worker containers
+    vcores: 1
+    memory: 2GiB
+    instances: 0
+    restarts: -1             # Allowed number of restarts, -1 for unlimited
