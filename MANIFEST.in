@@ -8,5 +8,3 @@ include requirements.txt
 
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
-include versioneer.py
-include dask_yarn/_version.py
