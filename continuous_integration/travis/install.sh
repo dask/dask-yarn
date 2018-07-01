@@ -19,6 +19,7 @@ source activate test-environment
 
 pip install grpcio-tools
 
+cd ~/dask-yarn
 pip install -v --no-deps .
 
 conda list
