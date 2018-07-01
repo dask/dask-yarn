@@ -42,7 +42,7 @@ before_install:
     - htcluster startup --image $CLUSTER_TYPE:latest --mount .:dask-yarn
 
 install:
-    - htcluster exec -- ./dask-yarn/continuous_integration/travis/docker_install.sh $PYTHON
+    - htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
 
 script:
     - set -e

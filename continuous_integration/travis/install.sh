@@ -15,7 +15,7 @@ conda create -n test-environment \
     python=$PYTHON \
     pyyaml
 
-conda activate test-environment
+source activate test-environment
 
 pip install grpcio-tools
 
