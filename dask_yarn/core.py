@@ -8,11 +8,13 @@ from distributed.utils import format_bytes, PeriodicCallback, log_errors
 import skein
 
 
-def make_remote_spec(environment, name='dask', queue='default', tags=None,
-                     n_workers=0, worker_vcores=1, worker_memory=2048,
-                     worker_max_restarts=-1, scheduler_vcores=1,
-                     scheduler_memory=2048):
-    """Create a ``skein.ApplicationSpec`` to run a dask cluster with the
+def make_specification(environment, name='dask', queue='default', tags=None,
+                       n_workers=0, worker_vcores=1, worker_memory=2048,
+                       worker_max_restarts=-1, scheduler_vcores=1,
+                       scheduler_memory=2048):
+    """ Create specification to run Dask Cluster
+
+    This creates a ``skein.ApplicationSpec`` to run a dask cluster with the
     scheduler in a YARN container.
 
     Parameters
@@ -73,15 +75,22 @@ def make_remote_spec(environment, name='dask', queue='default', tags=None,
 
 @skein.utils.with_finalizers
 class YarnCluster(object):
-    """Start a Dask cluster on YARN.
+    """ Start a Dask cluster on YARN.
 
     Parameters
     ----------
-    spec : skein.ApplicationSpec
+    spec : skein.ApplicationSpec, dict, or filename
         The application specification to use. Should define at least two
         services: ``'dask.scheduler'`` and ``'dask.worker'``.
+        See ``make_specification`` for more details
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
+
+    Examples
+    --------
+    >>> spec = dask_yarn.make_specification('my-env.tar.gz', ...)
+    >>> cluster = YarnCluster(spec)
+    >>> cluster.scale(10)
     """
     def __init__(self, spec, skein_client=None):
         if skein_client is None:

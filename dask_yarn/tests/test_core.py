@@ -23,7 +23,7 @@ def env():
 
 @pytest.fixture(scope='module')
 def spec(env):
-    spec = dask_yarn.make_remote_spec(env, worker_memory=1024, scheduler_memory=1024)
+    spec = dask_yarn.make_specification(env, worker_memory=1024, scheduler_memory=1024)
     return spec
 
 

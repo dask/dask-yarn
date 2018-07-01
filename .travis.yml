@@ -3,51 +3,51 @@ sudo: required
 dist: trusty
 os: linux
 python:
-    - "3.6"
+  - "3.6"
 
 services:
-    - docker
+  - docker
 
 git:
-    depth: false  # Ensure latest tag is pulled
+  depth: false  # Ensure latest tag is pulled
 
 branches:
-    only:
-        - master
+  only:
+    - master
 
 jobs:
-    fast_finish: true
+  fast_finish: true
 
-    include:
-        - env:
-            - CLUSTER_TYPE=kerberos
-            - PYTHON=3.6
-        - env:
-            - CLUSTER_TYPE=base
-            - PYTHON=2.7
+  include:
+    - env:
+      - CLUSTER_TYPE=kerberos
+      - PYTHON=3.6
+    - env:
+      - CLUSTER_TYPE=base
+      - PYTHON=2.7
 
 before_install:
-    # Upgrade docker-compose
-    - sudo rm /usr/local/bin/docker-compose
-    - curl -L https://github.com/docker/compose/releases/download/1.19.0/docker-compose-`uname -s`-`uname -m` > docker-compose
-    - chmod +x docker-compose
-    - sudo mv docker-compose /usr/local/bin
+  # Upgrade docker-compose
+  - sudo rm /usr/local/bin/docker-compose
+  - curl -L https://github.com/docker/compose/releases/download/1.19.0/docker-compose-`uname -s`-`uname -m` > docker-compose
+  - chmod +x docker-compose
+  - sudo mv docker-compose /usr/local/bin
     # Install the test cluster
-    - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
+  - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
     # Start the test cluster
-    - htcluster startup --image $CLUSTER_TYPE:latest --mount .:dask-yarn
+  - htcluster startup --image $CLUSTER_TYPE:latest --mount .:dask-yarn
 
 install:
-    - htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
+  - htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
 
 script:
-    - set -e
-    - export CONDA_ENV=/home/testuser/miniconda/envs/test-environment
-    - |
-      if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
-        htcluster exec -- kinit testuser -kt testuser.keytab
-      fi
-    - htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
+  - set -e
+  - export CONDA_ENV=/home/testuser/miniconda/envs/test-environment
+  - |
+    if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
+    htcluster exec -- kinit testuser -kt testuser.keytab
+    fi
+  - htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
 
 notifications:
   email: false
