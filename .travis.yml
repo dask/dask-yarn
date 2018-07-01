@@ -1,0 +1,58 @@
+language: python
+sudo: required
+dist: trusty
+os: linux
+python:
+    - "3.6"
+
+services:
+    - docker
+
+git:
+    depth: false  # Ensure latest tag is pulled
+
+branches:
+    only:
+        - master
+
+env:
+    global:
+        - secure: "o4isEDi/jgj741PYg2GJDAVtLcr+rgnNUFyAKpTjD8C0zfYH7XK9Sf8M2+ymk2BsmVF47KxSI4L2Zzl86rUeSaGSz5UGPbI9MLlv+pge53Z7uPZAv015xxDCjzn44UfXYzG2G0nu0RZ8spX7wpf8fw6jYaBmKogwxxL2t2ys4PMgHZV/0z9AebUj9Byi125VmoE/nvvLeDogXiLkDrod/vRtltA/IrKaZiirXNSakeuY21mGM7KvU8crKC08xae2HBEUBzrYuW2lpULnxrDm/sOFOfumErcRalnCQVYjntvCKFneGgfsXXqp/JoLoxKaM19ACnW0jIfXJ/3BBo/AHtFeuLj+TE2kWtLVd1aNtmyMmElmmxiALLdTvclQ3UcPnkj0HavDnoppo3BXp7eQp4KFpxfIRETOpR6ZP/0gN+pQSEkMH6Ac8DHbDbqiXUN0quEMN0pbbl/78+sROfIaokHDxp6iqiTCpFKJBRnBBiz1C+36j+WKsVIT7YFYMt/keG3YqUmWj+pfXCL6Ghj4sUTHAgpSp2hSn6Ys6f4iwCpi8LC9O4pxsMJE7xGhPZqyP88XcLGt+R8D8HYrDuViCpSViLrIG66vwCmV92+2DwLWJOPQPXoJVtyZQz4qnfyAuig2rTqofIMMM0KtAWL6/0G+jUoZxds15Ymg5YbIRmE="
+
+jobs:
+    fast_finish: true
+
+    include:
+        - env:
+            - CLUSTER_TYPE=kerberos
+            - PYTHON=3.6
+        - env:
+            - CLUSTER_TYPE=base
+            - PYTHON=2.7
+
+before_install:
+    # Upgrade docker-compose
+    - sudo rm /usr/local/bin/docker-compose
+    - curl -L https://github.com/docker/compose/releases/download/1.19.0/docker-compose-`uname -s`-`uname -m` > docker-compose
+    - chmod +x docker-compose
+    - sudo mv docker-compose /usr/local/bin
+    # Install the test cluster
+    - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
+    # Start the test cluster
+    - htcluster startup --image $CLUSTER_TYPE:latest --mount .:dask-yarn
+
+install:
+    - htcluster exec -- ./dask-yarn/continuous_integration/travis/docker_install.sh $PYTHON
+
+script:
+    - set -e
+    - export CONDA_ENV="/home/testuser/miniconda/envs/test-environment
+    - |
+      if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
+        htcluster exec -- kinit testuser -kt testuser.keytab
+      fi
+    - htcluster exec -- $CONDA_ENV/bin/py.test dask-yarn/ -vv
+    - htcluster exec -- $CONDA_ENV/bin/flake8 dask-yarn/
+
+notifications:
+  email: false
