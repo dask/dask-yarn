@@ -51,8 +51,7 @@ script:
       if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
         htcluster exec -- kinit testuser -kt testuser.keytab
       fi
-    - htcluster exec -- $CONDA_ENV/bin/py.test dask-yarn/ -vv
-    - htcluster exec -- $CONDA_ENV/bin/flake8 dask-yarn/
+    - htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
 
 notifications:
   email: false
