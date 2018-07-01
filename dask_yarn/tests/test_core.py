@@ -1,8 +1,11 @@
 import conda_pack
-# from dask_yarn import YarnCluster
-from distributed.utils_test import loop, inc
+
+import dask_yarn
+from dask_yarn import YarnCluster
+from dask.distributed import Client
+from distributed.utils_test import loop, inc  # noqa: F811, F401
+import time
 import skein
-import toolz
 import os
 
 import pytest
@@ -11,47 +14,27 @@ import pytest
 @pytest.fixture(scope='module')
 def env():
     env = conda_pack.CondaEnv.from_default()
-    fn = os.path.abspath(env.name + '.zip')
+    fn = os.path.abspath(env.name + '.tar.gz')
     if not os.path.exists(fn):
         print('Creating conda environment')
         env.pack(verbose=True)
     return fn
 
 
-@pytest.fixture()
-def scheduler_template(env):
-    envname = os.path.basename(env).rsplit('.', 1)[0]
-    scheduler_template = {
-        'resources': {'vcores': 1, 'memory': 1024},
-        'instances': 1,
-        'files': {envname: {'source': env, 'type': 'archive'}},
-        'commands': [
-            "ls",
-            "source " + envname + "/" + envname + "/bin/activate",
-            "dask-yarn-scheduler"
-        ]
-    }
-    return scheduler_template
-
-@pytest.fixture()
-def worker_template(env):
-    envname = os.path.basename(env).rsplit('.', 1)[0]
-    worker_template = {
-        'resources': {'vcores': 1, 'memory': 1024},
-        'files': {envname: {'source': env, 'type': 'archive'}},
-        'commands': [
-            "ls",
-            "source " + envname + "/" + envname + "/bin/activate",
-            "dask-yarn-worker --memory-limit 1024MB --nthreads 1"
-        ]
-    }
-    return worker_template
+@pytest.fixture(scope='module')
+def spec(env):
+    spec = dask_yarn.make_remote_spec(env, worker_memory=1024, scheduler_memory=1024)
+    return spec
 
 
 @pytest.fixture(scope='module')
 def skein_client():
-    with skein.Client.temporary() as client:
+    skein.Client.start_global_daemon()
+
+    with skein.Client() as client:
         yield client
+
+    skein.Client.stop_global_daemon()
 
 
 @pytest.fixture(scope='module')
@@ -61,32 +44,26 @@ def clean(skein_client):
         skein_client.kill(app)
 
 
-def test_basic(loop, scheduler_template, worker_template):
-    with YarnCluster(n_workers=2,
-                     worker_template=worker_template,
-                     scheduler_template=scheduler_template) as cluster:
+def test_basic(loop, spec, clean):  # noqa F811
+    with YarnCluster(spec) as cluster:
+        cluster.scale(2)
         with Client(cluster, loop=loop) as client:
             future = client.submit(inc, 10)
             assert future.result() == 11
 
-            assert len(client.scheduler_info()['workers']) == 2
+            start = time.time()
+            while len(client.scheduler_info()['workers']) < 2:
+                time.sleep(0.1)
+                assert time.time() < start + 5
 
             client.get_versions(check=True)
 
 
-def test_yarn_scheduler(skein_client, clean, scheduler_template,
-                        worker_template):
-    template = {
-        'services': {
-            'scheduler': scheduler_template,
-            'workers': toolz.merge(worker_template, {'instances': 2}),
-        },
-        'name': 'my-job',
-        'queue': 'default',
-    }
+def test_yaml_file(loop, spec, clean, tmpdir):  # noqa F811
+    fn = os.path.join(str(tmpdir), 'spec.yaml')
+    with open(fn, 'w') as f:
+        f.write(spec.to_yaml())
 
-    app = skein_client.submit(skein.Job.from_dict(template))
-    ac = app.connect()
-    print(ac.kv.wait('scheduler-address'))
-    print(dict(ac.kv))
-    import pdb; pdb.set_trace()
+    with YarnCluster(fn) as cluster:
+        with Client(cluster, loop=loop):
+            pass
