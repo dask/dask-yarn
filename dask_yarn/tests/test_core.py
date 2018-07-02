@@ -1,52 +1,44 @@
-import conda_pack
-
-import dask
-from dask_yarn import YarnCluster, make_specification
-from dask.distributed import Client
-from distributed.utils_test import loop, inc  # noqa: F811, F401
-import time
-import skein
 import os
+import time
+import sys
 
+import conda_pack
+import dask
+from dask.distributed import Client
+from distributed.utils_test import loop, inc
 import pytest
+import skein
+
+from dask_yarn import YarnCluster, make_specification
+
+loop = loop  # silence flake8 f811
 
 
 @pytest.fixture(scope='module')
-def env():
-    env = conda_pack.CondaEnv.from_default()
-    fn = os.path.abspath(env.name + '.tar.gz')
-    if not os.path.exists(fn):
-        print('Creating conda environment')
-        env.pack(verbose=True)
-    return fn
+def conda_env():
+    envpath = 'dask-yarn-py%d%d.tar.gz' % sys.version_info[:2]
+    if not os.path.exists(envpath):
+        conda_pack.pack(output=envpath, verbose=True)
+    return envpath
 
 
 @pytest.fixture(scope='module')
-def spec(env):
-    spec = make_specification(env, worker_memory='1024 MB',
-                              scheduler_memory='1024 MB')
+def spec(conda_env):
+    spec = make_specification(environment=conda_env,
+                              worker_memory='512 MB',
+                              scheduler_memory='512 MB',
+                              name='dask-yarn-tests')
     return spec
 
 
 @pytest.fixture(scope='module')
 def skein_client():
-    skein.Client.start_global_daemon()
-
     with skein.Client() as client:
         yield client
 
-    skein.Client.stop_global_daemon()
 
-
-@pytest.fixture(scope='module')
-def clean(skein_client):
-    applications = skein_client.applications()
-    for app in applications:
-        skein_client.kill(app)
-
-
-def test_basic(loop, spec, clean):  # noqa F811
-    with YarnCluster(spec) as cluster:
+def test_basic(skein_client, loop, spec):
+    with YarnCluster(spec, skein_client=skein_client) as cluster:
         cluster.scale(2)
         with Client(cluster, loop=loop) as client:
             future = client.submit(inc, 10)
@@ -60,28 +52,41 @@ def test_basic(loop, spec, clean):  # noqa F811
             client.get_versions(check=True)
 
 
-def test_yaml_file(loop, spec, clean, tmpdir):  # noqa F811
+def test_yaml_file(skein_client, loop, spec, tmpdir):
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
         f.write(spec.to_yaml())
 
-    with YarnCluster(fn) as cluster:
+    with YarnCluster(fn, skein_client=skein_client) as cluster:
         with Client(cluster, loop=loop):
             pass
 
 
-def test_config_spec(spec, loop):  # noqa F811
+def test_config_spec(skein_client, spec, loop):
     with dask.config.set({'yarn': {'specification': spec.to_dict()}}):
-        with YarnCluster() as cluster:
+        with YarnCluster(skein_client=skein_client) as cluster:
             with Client(cluster, loop=loop):
                 pass
 
 
-def test_config_env(loop, env):  # noqa F811
+def test_constructor_keyword_arguments(skein_client, loop, conda_env, spec):
+    with YarnCluster(environment=conda_env, skein_client=skein_client) as cluster:
+        with Client(cluster, loop=loop):
+            pass
+
+    with pytest.raises(ValueError) as info:
+        with YarnCluster(spec, environment=conda_env, skein_client=skein_client):
+            pass
+
+    assert "keyword" in str(info.value)
+    assert "not used" in str(info.value)
+
+
+def test_configuration():
     config = {'yarn': {
-        'environment': env,
-        'queue': 'q-123',
-        'name': 'dask-name-123',
+        'environment': 'myenv.tar.gz',
+        'queue': 'myqueue',
+        'name': 'dask-yarn-tests',
         'tags': ['a', 'b', 'c'],
         'specification': None,
         'workers': {'memory': '1234MB', 'instances': 1, 'vcores': 1, 'restarts': -1},
@@ -90,39 +95,19 @@ def test_config_env(loop, env):  # noqa F811
 
     with dask.config.set(config):
         spec = make_specification()
-        assert 'dask-name-123' in str(spec.to_dict())
-        assert 'q-123' in str(spec.to_dict())
-        with YarnCluster() as cluster:
-            with Client(cluster, loop=loop) as client:
-                client.submit(lambda: 0).result()  # wait for a worker
-
-                info = client.scheduler_info()
-                assert len(info['workers']) == 1
-                [w] = info['workers'].values()
-                assert w['memory_limit'] == 1234e6
+        assert spec.name == 'dask-yarn-tests'
+        assert spec.queue == 'myqueue'
+        assert spec.tags == {'a', 'b', 'c'}
+        assert spec.services['dask.worker'].resources.memory == 1234
+        assert spec.services['dask.scheduler'].resources.memory == 1234
 
 
-def test_constructor_keyword_arguments(loop, env, spec):  # noqa F811
-    with YarnCluster(environment=env) as cluster:
-        with Client(cluster, loop=loop):
-            pass
-
-    with pytest.raises(ValueError) as info:
-        with YarnCluster(spec, environment=env):
-            pass
-
-    assert "keyword" in str(info.value)
-    assert "not used" in str(info.value)
-
-
-def test_config_errors():
+def test_make_specification_errors():
     with dask.config.set({'yarn.environment': None}):
         with pytest.raises(ValueError) as info:
             make_specification()
 
-        assert all(word in str(info.value)
-                   for word in
-                   ['redeployable', 'conda-pack', 'dask-yarn.readthedocs.org'])
+        assert 'conda-pack' in str(info.value)
 
     with pytest.raises(ValueError) as info:
         make_specification(environment='foo.tar.gz', worker_memory=1234)
@@ -135,6 +120,6 @@ def test_config_errors():
         assert '1234 MB' in str(info.value)
 
 
-def test_relative_paths(env):
-    assert (make_specification(env).to_dict() ==
-            make_specification(os.path.relpath(env)).to_dict())
+def test_environment_relative_paths(conda_env):
+    assert (make_specification(conda_env).to_dict() ==
+            make_specification(os.path.relpath(conda_env)).to_dict())
