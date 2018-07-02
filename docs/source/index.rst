@@ -3,18 +3,19 @@ Dask-Yarn
 
 Dask-Yarn deploys Dask on YARN clusters, such as are often found in traditional
 Hadoop or Spark installations.  Dask-Yarn provides an easy interface to quickly
-start, stop, and scale a Dask cluster from Python.
+start, scale, and stop Dask clusters natively from Python.
 
 .. code-block:: python
 
     from dask_yarn import YarnCluster
     from dask.distributed import Client
 
-    # Create a cluster with 4 workers, each with two cores and two GB of memory
+    # Create a cluster where each worker has two cores and eight GB of memory
     cluster = YarnCluster(environment='environment.tar.gz',
-                          n_workers=4,
                           worker_vcores=2,
-                          worker_memory="2GB")
+                          worker_memory="8GB")
+    # Scale out to ten such workers
+    cluster.scale(10)
 
     # Connect to the cluster
     client = Client(cluster)
@@ -48,10 +49,10 @@ minimum.
 
 .. code-block:: console
 
-    $ conda create -n my-env dask distributed                # Create an environment
-    $ pip install git+https://github.com/dask/dask-yarn.git  # Modify normally
+    $ conda create -n my-env pandas scikit-learn dask        # Create an environment
+    $ pip install git+https://github.com/dask/dask-yarn.git  # Modify environment normally
 
-    $ conda-pack -n my-env
+    $ conda-pack -n my-env                                   # Package environment
     Collecting packages...
     Packing environment at '/home/username/miniconda/envs/my-env' to 'my-env.tar.gz'
     [########################################] | 100% Completed |  12.2s
@@ -65,9 +66,50 @@ versions match with the following:
    from dask_yarn import YarnCluster
    from dask.distributed import Client
 
-   cluster = YarnCluster(environment='dask-yarn.tar.gz')
+   cluster = YarnCluster(environment='my-env.tar.gz')
    client = Client(cluster)
    client.get_versions(check=True)
+
+Configuration
+-------------
+
+Specifying all parameters to the YarnCluster constructor every time can be
+error prone, especially when sharing this workflow with new users.
+Alternatively, you can provide defaults in a configuration file, traditionally
+held in ``~/.config/dask/yarn.yaml`` or ``/etc/dask/yarn.yaml``.  Here is an
+example:
+
+.. code-block:: yaml
+
+   # /home/username/.config/dask/yarn.yaml
+   yarn:
+     name: dask                 # Application name
+     queue: default             # Yarn queue to deploy to
+
+     environment: /path/to/my-env.tar.gz
+
+     tags: []                   # List of strings to tag applications
+     scheduler:                 # Specifications of scheduler container
+       vcores: 1
+       memory: 4GiB
+     workers:                   # Specifications of worker containers
+       vcores: 2
+       memory: 8GiB
+       instances: 0             # Number of default workers with which to start
+       restarts: -1             # Allowed number of restarts, -1 for unlimited
+
+Users can now create YarnClusters without specifying any additional
+information.
+
+.. code-block:: python
+
+   from dask_yarn import YarnCluster
+
+   cluster = YarnCluster()
+   cluster.scale(20)
+
+For more information on Dask configuration see the `Dask configuration
+documentation <http://dask.pydata.org/en/latest/configuration.html>`_.
 
 
 .. toctree::
