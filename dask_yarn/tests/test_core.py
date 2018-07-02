@@ -1,8 +1,7 @@
 import conda_pack
 
 import dask
-import dask_yarn
-from dask_yarn import YarnCluster
+from dask_yarn import YarnCluster, make_specification
 from dask.distributed import Client
 from distributed.utils_test import loop, inc  # noqa: F811, F401
 import time
@@ -24,8 +23,8 @@ def env():
 
 @pytest.fixture(scope='module')
 def spec(env):
-    spec = dask_yarn.make_specification(env, worker_memory='1024 MB',
-                                        scheduler_memory='1024 MB')
+    spec = make_specification(env, worker_memory='1024 MB',
+                              scheduler_memory='1024 MB')
     return spec
 
 
@@ -90,7 +89,7 @@ def test_config_env(loop, env):  # noqa F811
     }
 
     with dask.config.set(config):
-        spec = dask_yarn.make_specification()
+        spec = make_specification()
         assert 'dask-name-123' in str(spec.to_dict())
         assert 'q-123' in str(spec.to_dict())
         with YarnCluster() as cluster:
@@ -119,20 +118,23 @@ def test_constructor_keyword_arguments(loop, env, spec):  # noqa F811
 def test_config_errors():
     with dask.config.set({'yarn.environment': None}):
         with pytest.raises(ValueError) as info:
-            dask_yarn.make_specification()
+            make_specification()
 
         assert all(word in str(info.value)
                    for word in
                    ['redeployable', 'conda-pack', 'dask-yarn.readthedocs.org'])
 
     with pytest.raises(ValueError) as info:
-        dask_yarn.make_specification(environment='foo.tar.gz',
-                                     worker_memory=1234)
+        make_specification(environment='foo.tar.gz', worker_memory=1234)
 
         assert '1234 MB' in str(info.value)
 
     with pytest.raises(ValueError) as info:
-        dask_yarn.make_specification(environment='foo.tar.gz',
-                                     scheduler_memory=1234)
+        make_specification(environment='foo.tar.gz', scheduler_memory=1234)
 
         assert '1234 MB' in str(info.value)
+
+
+def test_relative_paths(env):
+    assert (make_specification(env).to_dict() ==
+            make_specification(os.path.relpath(env)).to_dict())
