@@ -160,4 +160,4 @@ texinfo_documents = [
 # -- Extension configuration -------------------------------------------------
 
 def setup(app):
-    app.add_stylesheet('http://dask.pydata.org/en/latest/_static/style.css')
+    app.add_stylesheet('https://dask.pydata.org/en/latest/_static/style.css')
