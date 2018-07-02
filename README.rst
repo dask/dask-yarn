@@ -1,7 +1,7 @@
 Dask-Yarn
 =========
 
-|travis| |readthedocs|
+|travis| |readthedocs| |pypi|
 
 Dask-Yarn deploys Dask on `YARN
 <https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`_
@@ -21,5 +21,7 @@ New BSD. See the
 
 .. |travis| image:: https://travis-ci.org/dask/dask-yarn.svg?branch=master
    :target: https://travis-ci.org/dask/dask-yarn
+.. |pypi| image:: https://img.shields.io/pypi/v/dask-yarn.svg
+   :target: https://pypi.org/project/dask-yarn/
 .. |readthedocs| image:: https://readthedocs.org/projects/dask-yarn/badge/?version=latest
     :target: https://dask-yarn.readthedocs.io/en/latest/?badge=latest

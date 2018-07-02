@@ -28,7 +28,16 @@ a Pythonic library to manage Yarn services.
 Install
 -------
 
-Until an official release, ``dask-yarn`` can be installed from source:
+**Install with Pip:**
+
+.. code-block:: console
+
+    pip install dask-yarn
+
+**Install from Source:**
+
+Dask-Yarn is `available on github <https://github.com/dask/dask-yarn>`_ and can
+always be installed from source.
 
 .. code-block:: console
 
