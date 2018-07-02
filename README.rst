@@ -21,5 +21,5 @@ New BSD. See the
 
 .. |travis| image:: https://travis-ci.org/dask/dask-yarn.svg?branch=master
    :target: https://travis-ci.org/dask/dask-yarn
-.. |readthedocs| image:: //readthedocs.org/projects/dask-yarn/badge/?version=latest
+.. |readthedocs| image:: https://readthedocs.org/projects/dask-yarn/badge/?version=latest
     :target: https://dask-yarn.readthedocs.io/en/latest/?badge=latest

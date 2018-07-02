@@ -1,9 +1,11 @@
 Dask-Yarn
 =========
 
-Dask-Yarn deploys Dask on YARN clusters, such as are often found in traditional
-Hadoop or Spark installations.  Dask-Yarn provides an easy interface to quickly
-start, scale, and stop Dask clusters natively from Python.
+Dask-Yarn deploys Dask on `YARN
+<https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`_
+clusters, as are found in traditional Hadoop installations. Dask-Yarn provides
+an easy interface to quickly start, scale, and stop Dask clusters natively from
+Python.
 
 .. code-block:: python
 
@@ -20,7 +22,7 @@ start, scale, and stop Dask clusters natively from Python.
     # Connect to the cluster
     client = Client(cluster)
 
-Dask-yarn uses `Skein <https://jcrist.github.io/skein/>`__,
+Dask-Yarn uses `Skein <https://jcrist.github.io/skein/>`__,
 a Pythonic library to manage Yarn services.
 
 Install
@@ -39,13 +41,10 @@ Distributing Python Environments
 We need to ensure that the libraries used on the Yarn cluster are the same as
 what you are using locally.  We accomplish this by packaging up a conda
 environment with `conda-pack <https://conda.github.io/conda-pack/>`__ and
-shipping it to the Yarn cluster with Dask-yarn.
+shipping it to the Yarn cluster with Dask-Yarn.
 
-Dask-Yarn relies on Conda environments packaged with
-`conda-pack <https://conda.github.io/conda-pack/>`__ to distribute
-Python packages to the workers. These environments can contain any Python
-packages you might need, but require ``dask-yarn`` (and its dependencies) at a
-minimum.
+These environments can contain any Python packages you might need, but require
+``dask-yarn`` (and its dependencies) at a minimum.
 
 .. code-block:: console
 
