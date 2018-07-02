@@ -88,13 +88,15 @@ example:
      environment: /path/to/my-env.tar.gz
 
      tags: []                   # List of strings to tag applications
+
      scheduler:                 # Specifications of scheduler container
        vcores: 1
        memory: 4GiB
-     workers:                   # Specifications of worker containers
+
+     worker:                   # Specifications of worker containers
        vcores: 2
        memory: 8GiB
-       instances: 0             # Number of default workers with which to start
+       count: 0                 # Number of workers to start on initialization
        restarts: -1             # Allowed number of restarts, -1 for unlimited
 
 Users can now create YarnClusters without specifying any additional

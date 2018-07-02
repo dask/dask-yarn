@@ -5,4 +5,4 @@ from . import _patch
 from . import config
 del _patch, config
 
-from .core import YarnCluster, make_specification
+from .core import YarnCluster

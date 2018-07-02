@@ -25,75 +25,36 @@ Perhaps you meant: "%d MB"
 """
 
 
-def make_specification(
-        environment=None,
-        name=None,
-        queue=None,
-        tags=None,
-        n_workers=None,
-        worker_vcores=None,
-        worker_memory=None,
-        worker_max_restarts=None,
-        scheduler_vcores=None,
-        scheduler_memory=None):
+# exposed for testing only
+
+def _make_specification(**kwargs):
     """ Create specification to run Dask Cluster
 
     This creates a ``skein.ApplicationSpec`` to run a dask cluster with the
-    scheduler in a YARN container.
-
-    You can define default values for this in Dask's ``yarn.yaml`` configuration
-    file.  See http://dask.pydata.org/en/latest/configuration.html for more
-    information.
-
-    Parameters
-    ----------
-    environment : str
-        Path to an archived Conda environment (either ``tar.gz`` or ``zip``).
-    name : str, optional
-        The application name.
-    queue : str, optional
-        The queue to deploy to.
-    tags : sequence, optional
-        A set of strings to use as tags for this application.
-    n_workers : int, optional
-        The number of workers to initially start.
-    worker_vcores : int, optional
-        The number of virtual cores to allocate per worker.
-    worker_memory : str, optional
-        The ammount of memory to allocate per worker like '2GB' or '4096 MiB'.
-    worker_max_restarts : int, optional
-        The maximum number of worker restarts to allow before failing the
-        application. Default is unlimited.
-    scheduler_vcores : int, optional
-        The number of virtual cores to allocate per scheduler.
-    scheduler_memory : str, optional
-        The ammount of memory to allocate to the scheduler like '2GB' or '4096 MiB'.
-
-    Returns
-    -------
-    spec : skein.ApplicationSpec
-        The application specification.
+    scheduler in a YARN container. See the docstring for ``YarnCluster`` for
+    more details.
     """
-    if environment is None:
-        environment = dask.config.get('yarn.environment')
-    if name is None:
-        name = dask.config.get('yarn.name')
-    if queue is None:
-        queue = dask.config.get('yarn.queue')
-    if tags is None:
-        tags = dask.config.get('yarn.tags')
-    if n_workers is None:
-        n_workers = dask.config.get('yarn.workers.instances')
-    if worker_vcores is None:
-        worker_vcores = dask.config.get('yarn.workers.vcores')
-    if worker_memory is None:
-        worker_memory = dask.config.get('yarn.workers.memory')
-    if worker_max_restarts is None:
-        worker_max_restarts = dask.config.get('yarn.workers.restarts')
-    if scheduler_vcores is None:
-        scheduler_vcores = dask.config.get('yarn.scheduler.vcores')
-    if scheduler_memory is None:
-        scheduler_memory = dask.config.get('yarn.scheduler.memory')
+    if not kwargs and dask.config.get('yarn.specification'):
+        # No overrides and full specification in configuration
+        spec = dask.config.get('yarn.specification')
+        if isinstance(spec, dict):
+            return skein.ApplicationSpec.from_dict(spec)
+        return skein.ApplicationSpec.from_file(spec)
+
+    def either(a, b):
+        return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
+
+    environment = either('environment', 'yarn.environment')
+    name = either('name', 'yarn.name')
+    queue = either('queue', 'yarn.queue')
+    tags = either('tags', 'yarn.tags')
+    queue = either('queue', 'yarn.queue')
+    n_workers = either('n_workers', 'yarn.worker.count')
+    worker_vcores = either('worker_vcores', 'yarn.worker.vcores')
+    worker_memory = either('worker_memory', 'yarn.worker.memory')
+    worker_restarts = either('worker_restarts', 'yarn.worker.restarts')
+    scheduler_vcores = either('scheduler_vcores', 'yarn.scheduler.vcores')
+    scheduler_memory = either('scheduler_memory', 'yarn.scheduler.memory')
 
     if environment is None:
         msg = ("You must provide a path to an archived python environment for "
@@ -125,12 +86,13 @@ def make_specification(
                               files={'environment': environment},
                               commands=['source environment/bin/activate',
                                         'dask-yarn-scheduler'])
+
     worker = skein.Service(instances=n_workers,
                            resources=skein.Resources(
                                vcores=worker_vcores,
                                memory=int(worker_memory / 1e6)
                            ),
-                           max_restarts=worker_max_restarts,
+                           max_restarts=worker_restarts,
                            depends=['dask.scheduler'],
                            env={'DASK_CONFIG': '.config'},
                            files={'environment': environment},
@@ -147,34 +109,89 @@ def make_specification(
 
 
 class YarnCluster(object):
-    """ Start a Dask cluster on YARN.
+    """Start a Dask cluster on YARN.
+
+    You can define default values for this in Dask's ``yarn.yaml``
+    configuration file. See http://dask.pydata.org/en/latest/configuration.html
+    for more information.
 
     Parameters
     ----------
-    spec : skein.ApplicationSpec, dict, or filename
-        The application specification to use. Should define at least two
-        services: ``'dask.scheduler'`` and ``'dask.worker'``.
-        See ``make_specification`` for more details
+    environment : str, optional
+        Path to an archived Conda environment (either ``tar.gz`` or ``zip``).
+    n_workers : int, optional
+        The number of workers to initially start.
+    worker_vcores : int, optional
+        The number of virtual cores to allocate per worker.
+    worker_memory : str, optional
+        The amount of memory to allocate per worker. Accepts a unit suffix
+        (e.g. '2 GiB' or '4096 MB').
+    worker_restarts : int, optional
+        The maximum number of worker restarts to allow before failing the
+        application. Default is unlimited.
+    scheduler_vcores : int, optional
+        The number of virtual cores to allocate per scheduler.
+    scheduler_memory : str, optional
+        The amount of memory to allocate to the scheduler. Accepts a unit
+        suffix (e.g. '2 GiB' or '4096 MB')
+    name : str, optional
+        The application name.
+    queue : str, optional
+        The queue to deploy to.
+    tags : sequence, optional
+        A set of strings to use as tags for this application.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
-    **kwargs:
-        Extra keyword arguments to pass to make_specification if necessary
 
     Examples
     --------
-    >>> spec = dask_yarn.make_specification('my-env.tar.gz', ...)
-    >>> cluster = YarnCluster(spec)
+    >>> cluster = YarnCluster(environment='my-env.tar.gz', ...)
     >>> cluster.scale(10)
     """
-    def __init__(self, spec=None, skein_client=None, **kwargs):
-        if spec is None:
-            spec = dask.config.get('yarn.specification')
-        if spec is None:
-            spec = make_specification(**kwargs)
-        else:
-            if kwargs:
-                raise ValueError("A full specification was found "
-                                 "so keyword arguments were not used")
+    def __init__(self,
+                 environment=None,
+                 n_workers=None,
+                 worker_vcores=None,
+                 worker_memory=None,
+                 worker_max_restarts=None,
+                 scheduler_vcores=None,
+                 scheduler_memory=None,
+                 name=None,
+                 queue=None,
+                 tags=None,
+                 skein_client=None):
+
+        spec = _make_specification(environment=environment,
+                                   n_workers=n_workers,
+                                   worker_vcores=worker_vcores,
+                                   worker_memory=worker_memory,
+                                   worker_max_restarts=worker_max_restarts,
+                                   scheduler_vcores=scheduler_vcores,
+                                   scheduler_memory=scheduler_memory,
+                                   name=name,
+                                   queue=queue,
+                                   tags=tags)
+
+        self._start_cluster(spec, skein_client)
+
+    @classmethod
+    def from_specification(cls, spec, skein_client=None):
+        """Start a dask cluster from a skein specification.
+
+        Parameters
+        ----------
+        spec : skein.ApplicationSpec, dict, or filename
+            The application specification to use. Should define at least two
+            services: ``'dask.scheduler'`` and ``'dask.worker'``.
+        skein_client : skein.Client, optional
+            The ``skein.Client`` to use. If not provided, one will be started.
+        """
+        self = super(YarnCluster, cls).__new__(cls)
+        self._start_cluster(spec, skein_client)
+        return self
+
+    def _start_cluster(self, spec, skein_client=None):
+        """Start the cluster and initialize state"""
         if skein_client is None:
             skein_client = skein.Client()
 
@@ -276,8 +293,8 @@ class YarnCluster(object):
         n : int
             Target number of workers
 
-        Example
-        -------
+        Examples
+        --------
         >>> cluster.scale(10)  # scale cluster to ten workers
         """
         workers = self.workers()

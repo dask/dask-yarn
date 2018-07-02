@@ -9,9 +9,12 @@ from distributed.utils_test import loop, inc
 import pytest
 import skein
 
-from dask_yarn import YarnCluster, make_specification
+from dask_yarn import YarnCluster
+from dask_yarn.core import _make_specification
 
 loop = loop  # silence flake8 f811
+
+APPNAME = 'dask-yarn-tests'
 
 
 @pytest.fixture(scope='module')
@@ -20,15 +23,6 @@ def conda_env():
     if not os.path.exists(envpath):
         conda_pack.pack(output=envpath, verbose=True)
     return envpath
-
-
-@pytest.fixture(scope='module')
-def spec(conda_env):
-    spec = make_specification(environment=conda_env,
-                              worker_memory='512 MB',
-                              scheduler_memory='512 MB',
-                              name='dask-yarn-tests')
-    return spec
 
 
 @pytest.fixture(scope='module')
@@ -50,8 +44,12 @@ def check_is_shutdown(client, app_id, status='SUCCEEDED'):
     assert report.final_status == status
 
 
-def test_basic(skein_client, loop, spec):
-    with YarnCluster(spec, skein_client=skein_client) as cluster:
+def test_basic(skein_client, conda_env, loop):
+    with YarnCluster(environment=conda_env,
+                     worker_memory='512 MB',
+                     scheduler_memory='512 MB',
+                     name=APPNAME,
+                     skein_client=skein_client) as cluster:
         cluster.scale(2)
         with Client(cluster, loop=loop) as client:
             future = client.submit(inc, 10)
@@ -67,40 +65,20 @@ def test_basic(skein_client, loop, spec):
     check_is_shutdown(skein_client, cluster.app_id)
 
 
-def test_yaml_file(skein_client, loop, spec, tmpdir):
+def test_from_specification(skein_client, conda_env, tmpdir, loop):
+    spec = _make_specification(environment=conda_env,
+                               worker_memory='512 MB',
+                               scheduler_memory='512 MB',
+                               name=APPNAME)
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
         f.write(spec.to_yaml())
 
-    with YarnCluster(fn, skein_client=skein_client) as cluster:
+    with YarnCluster.from_specification(fn, skein_client=skein_client) as cluster:
         with Client(cluster, loop=loop):
             pass
 
     check_is_shutdown(skein_client, cluster.app_id)
-
-
-def test_config_spec(skein_client, spec, loop):
-    with dask.config.set({'yarn': {'specification': spec.to_dict()}}):
-        with YarnCluster(skein_client=skein_client) as cluster:
-            with Client(cluster, loop=loop):
-                pass
-
-    check_is_shutdown(skein_client, cluster.app_id)
-
-
-def test_constructor_keyword_arguments(skein_client, loop, conda_env, spec):
-    with YarnCluster(environment=conda_env, skein_client=skein_client) as cluster:
-        with Client(cluster, loop=loop):
-            pass
-
-    check_is_shutdown(skein_client, cluster.app_id)
-
-    with pytest.raises(ValueError) as info:
-        with YarnCluster(spec, environment=conda_env, skein_client=skein_client):
-            pass
-
-    assert "keyword" in str(info.value)
-    assert "not used" in str(info.value)
 
 
 def test_configuration():
@@ -110,12 +88,12 @@ def test_configuration():
         'name': 'dask-yarn-tests',
         'tags': ['a', 'b', 'c'],
         'specification': None,
-        'workers': {'memory': '1234MB', 'instances': 1, 'vcores': 1, 'restarts': -1},
+        'worker': {'memory': '1234MB', 'count': 1, 'vcores': 1, 'restarts': -1},
         'scheduler': {'memory': '1234MB', 'vcores': 1}}
     }
 
     with dask.config.set(config):
-        spec = make_specification()
+        spec = _make_specification()
         assert spec.name == 'dask-yarn-tests'
         assert spec.queue == 'myqueue'
         assert spec.tags == {'a', 'b', 'c'}
@@ -123,24 +101,55 @@ def test_configuration():
         assert spec.services['dask.scheduler'].resources.memory == 1234
 
 
+def test_configuration_full_specification(conda_env, tmpdir):
+    spec = _make_specification(environment=conda_env,
+                               worker_memory='512 MB',
+                               scheduler_memory='512 MB',
+                               name=APPNAME)
+    fn = os.path.join(str(tmpdir), 'spec.yaml')
+    with open(fn, 'w') as f:
+        f.write(spec.to_yaml())
+
+    # path to full specification
+    with dask.config.set({'yarn': {'specification': fn}}):
+        spec = _make_specification()
+        assert spec == spec
+
+    # full specification inlined
+    with dask.config.set({'yarn': {'specification': spec.to_dict()}}):
+        spec = _make_specification()
+        assert spec == spec
+
+    # when overrides specified, ignores full specification
+    override = {'specification': spec.to_dict()}
+    override.update(dask.config.get('yarn'))
+    override['name'] = 'config-name'
+    with dask.config.set({'yarn': override}):
+        spec = _make_specification(environment='foo',
+                                   name='test-name',
+                                   n_workers=4)
+        assert spec.services['dask.worker'].instances == 4
+        assert spec.name == 'test-name'
+
+
 def test_make_specification_errors():
     with dask.config.set({'yarn.environment': None}):
         with pytest.raises(ValueError) as info:
-            make_specification()
+            _make_specification()
 
         assert 'conda-pack' in str(info.value)
 
     with pytest.raises(ValueError) as info:
-        make_specification(environment='foo.tar.gz', worker_memory=1234)
+        _make_specification(environment='foo.tar.gz', worker_memory=1234)
 
         assert '1234 MB' in str(info.value)
 
     with pytest.raises(ValueError) as info:
-        make_specification(environment='foo.tar.gz', scheduler_memory=1234)
+        _make_specification(environment='foo.tar.gz', scheduler_memory=1234)
 
         assert '1234 MB' in str(info.value)
 
 
 def test_environment_relative_paths(conda_env):
-    assert (make_specification(conda_env).to_dict() ==
-            make_specification(os.path.relpath(conda_env)).to_dict())
+    assert (_make_specification(environment=conda_env).to_dict() ==
+            _make_specification(environment=os.path.relpath(conda_env)).to_dict())
