@@ -1,5 +1,6 @@
 from __future__ import absolute_import, print_function, division
 
+import os
 import weakref
 
 import dask
@@ -95,6 +96,8 @@ def make_specification(
                "See https://dask-yarn.readthedocs.org/en/latest/environments.html "
                "for more information")
         raise ValueError(msg)
+
+    environment = os.path.abspath(environment)
 
     if isinstance(scheduler_memory, str):
         scheduler_memory = dask.utils.parse_bytes(scheduler_memory)
