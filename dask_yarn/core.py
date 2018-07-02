@@ -90,11 +90,11 @@ def make_specification(
         scheduler_memory = dask.config.get('yarn.scheduler.memory')
 
     if environment is None:
-        msg = ("You must provide a path to a redeployable environment for the "
-               "workers.\n"
+        msg = ("You must provide a path to an archived python environment for "
+               "the workers.\n"
                "This is commonly achieved through conda-pack.\n\n"
-               "See https://dask-yarn.readthedocs.org/en/latest/environments.html "
-               "for more information")
+               "See https://dask-yarn.readthedocs.io/en/latest/"
+               "#distributing-python-environments for more information")
         raise ValueError(msg)
 
     environment = os.path.abspath(environment)
