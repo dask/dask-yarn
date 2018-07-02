@@ -37,6 +37,19 @@ def skein_client():
         yield client
 
 
+def check_is_shutdown(client, app_id, status='SUCCEEDED'):
+    timeleft = 5
+    report = client.status(app_id)
+    while report.state not in ('FINISHED', 'FAILED', 'KILLED'):
+        time.sleep(0.1)
+        timeleft -= 0.1
+        if timeleft < 0:
+            client.kill(app_id)
+            assert False, "Application wasn't properly terminated"
+
+    assert report.final_status == status
+
+
 def test_basic(skein_client, loop, spec):
     with YarnCluster(spec, skein_client=skein_client) as cluster:
         cluster.scale(2)
@@ -51,6 +64,8 @@ def test_basic(skein_client, loop, spec):
 
             client.get_versions(check=True)
 
+    check_is_shutdown(skein_client, cluster.app_id)
+
 
 def test_yaml_file(skein_client, loop, spec, tmpdir):
     fn = os.path.join(str(tmpdir), 'spec.yaml')
@@ -61,6 +76,8 @@ def test_yaml_file(skein_client, loop, spec, tmpdir):
         with Client(cluster, loop=loop):
             pass
 
+    check_is_shutdown(skein_client, cluster.app_id)
+
 
 def test_config_spec(skein_client, spec, loop):
     with dask.config.set({'yarn': {'specification': spec.to_dict()}}):
@@ -68,11 +85,15 @@ def test_config_spec(skein_client, spec, loop):
             with Client(cluster, loop=loop):
                 pass
 
+    check_is_shutdown(skein_client, cluster.app_id)
+
 
 def test_constructor_keyword_arguments(skein_client, loop, conda_env, spec):
     with YarnCluster(environment=conda_env, skein_client=skein_client) as cluster:
         with Client(cluster, loop=loop):
             pass
+
+    check_is_shutdown(skein_client, cluster.app_id)
 
     with pytest.raises(ValueError) as info:
         with YarnCluster(spec, environment=conda_env, skein_client=skein_client):

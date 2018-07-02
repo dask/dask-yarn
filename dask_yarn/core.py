@@ -1,13 +1,19 @@
 from __future__ import absolute_import, print_function, division
 
 import os
-import weakref
+import sys
 
 import dask
 from dask.distributed import get_client
 from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
 import skein
+
+if sys.version_info.major == 2:
+    from backports import weakref
+else:
+    import weakref
+
 
 memory_warning = """
 
@@ -140,7 +146,6 @@ def make_specification(
     return spec
 
 
-@skein.utils.with_finalizers
 class YarnCluster(object):
     """ Start a Dask cluster on YARN.
 
@@ -174,64 +179,23 @@ class YarnCluster(object):
             skein_client = skein.Client()
 
         app = skein_client.submit(spec)
-        self._add_finalizer(lambda: app.kill())
+        try:
+            application_client = app.connect()
+            scheduler_address = application_client.kv.wait('dask.scheduler')
+        except Exception:
+            # Failed to connect, kill the application and reraise
+            app.kill()
+            raise
 
-        self.application_client = app.connect()
+        # Ensure application gets cleaned up
+        self._finalizer = weakref.finalize(self, application_client.shutdown)
 
-    @classmethod
-    def from_current(cls):
-        """Create a ``YarnCluster`` from within a running skein application.
-
-        Returns
-        -------
-        cluster : YarnCluster
-        """
-        self = super(YarnCluster, cls).__new__(cls)
-        self.application_client = skein.ApplicationClient.from_current()
-        # will happen immediately, since inside existing cluster
-        self.wait_for_scheduler()
-        return self
-
-    @classmethod
-    def from_application_id(cls, app_id, skein_client=None):
-        """Create a ``YarnCluster`` from an existing skein application.
-
-        Parameters
-        ----------
-        app_id : str
-            The application id.
-        skein_client : skein.Client, optional
-            The ``skein.Client`` to use. If not provided, one will be started.
-
-        Returns
-        -------
-        cluster : YarnCluster
-        """
-        self = super(YarnCluster, cls).__new__(cls)
-
-        if skein_client is None:
-            skein_client = skein.Client()
-
-        self.application_client = skein_client.connect(app_id)
-        return self
-
-    def wait_for_scheduler(self):
-        """Wait for the scheduler to start"""
-        self._scheduler_address = self.application_client.kv.wait('dask.scheduler')
-
-    @property
-    def scheduler_address(self):
-        """The scheduler address.
-
-        If the scheduler hasn't started, blocks until it has"""
-        if not hasattr(self, '_scheduler_address'):
-            self.wait_for_scheduler()
-        return self._scheduler_address
+        self.app_id = app.app_id
+        self.application_client = application_client
+        self.scheduler_address = scheduler_address
 
     def __repr__(self):
-        if hasattr(self, '_scheduler_address'):
-            return 'YarnCluster<%r>' % self._scheduler_address
-        return 'YarnCluster<"pending connection">'
+        return 'YarnCluster<%r>' % self.scheduler_address
 
     def _dask_client(self):
         if hasattr(self, '_dask_client_ref'):
@@ -242,9 +206,25 @@ class YarnCluster(object):
         self._dask_client_ref = weakref.ref(client)
         return client
 
-    def close(self):
-        """Close this cluster"""
-        self._finalize()
+    def shutdown(self, status='SUCCEEDED'):
+        """Shutdown the application.
+
+        Parameters
+        ----------
+        status : {'SUCCEEDED', 'FAILED', 'KILLED'}, optional
+            The yarn application exit status.
+        """
+        self._finalizer.detach()  # don't call shutdown later
+        self.application_client.shutdown(status=status)
+
+    def close(self, **kwargs):
+        """Close this cluster. An alias for ``shutdown``.
+
+        See Also
+        --------
+        shutdown
+        """
+        self.shutdown(**kwargs)
 
     def __enter__(self):
         return self
