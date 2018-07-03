@@ -3,9 +3,9 @@ Dask-Yarn
 
 Dask-Yarn deploys Dask on `YARN
 <https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`_
-clusters, as are found in traditional Hadoop installations. Dask-Yarn provides
-an easy interface to quickly start, scale, and stop Dask clusters natively from
-Python.
+clusters, such as are found in traditional Hadoop installations. Dask-Yarn
+provides an easy interface to quickly start, scale, and stop Dask clusters
+natively from Python.
 
 .. code-block:: python
 
@@ -27,6 +27,12 @@ a Pythonic library to manage Yarn services.
 
 Install
 -------
+
+**Install with Conda:**
+
+.. code-block:: console
+
+    conda install -c conda-forge dask-yarn
 
 **Install with Pip:**
 
@@ -57,17 +63,18 @@ These environments can contain any Python packages you might need, but require
 
 .. code-block:: console
 
-    $ conda create -n my-env pandas scikit-learn dask        # Create an environment
-    $ pip install git+https://github.com/dask/dask-yarn.git  # Modify environment normally
+    $ conda create -n my-env dask-yarn scikit-learn          # Create an environment
 
-    $ conda-pack -n my-env                                   # Package environment
+    $ conda activate my-env                                  # Activate the environment
+
+    $ conda-pack                                             # Package environment
     Collecting packages...
     Packing environment at '/home/username/miniconda/envs/my-env' to 'my-env.tar.gz'
     [########################################] | 100% Completed |  12.2s
 
-You can now supply the path to ``my-env.tar.gz`` to the
-``YarnCluster(environment=...)`` keyword.  You may want to verify that your
-versions match with the following:
+You can now start a cluster with that environment by passing the path to the
+constructor, e.g. ``YarnCluster(environment='my-env.tar.gz', ...)``.  You may
+want to verify that your versions match with the following:
 
 .. code-block:: python
 
@@ -76,7 +83,7 @@ versions match with the following:
 
    cluster = YarnCluster(environment='my-env.tar.gz')
    client = Client(cluster)
-   client.get_versions(check=True)
+   client.get_versions(check=True)  # check that versions match between all nodes
 
 Configuration
 -------------

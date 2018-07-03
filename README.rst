@@ -1,13 +1,13 @@
 Dask-Yarn
 =========
 
-|travis| |readthedocs| |pypi|
+|travis| |readthedocs| |pypi| |conda|
 
 Dask-Yarn deploys Dask on `YARN
 <https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`_
-clusters, as are found in traditional Hadoop installations. Dask-Yarn provides
-an easy interface to quickly start, stop, and scale Dask clusters natively from
-Python.
+clusters, such as are found in traditional Hadoop installations. Dask-Yarn
+provides an easy interface to quickly start, stop, and scale Dask clusters
+natively from Python.
 
 See `the documentation <https://dask-yarn.readthedocs.org>`_ for more
 information.
@@ -23,5 +23,7 @@ New BSD. See the
    :target: https://travis-ci.org/dask/dask-yarn
 .. |pypi| image:: https://img.shields.io/pypi/v/dask-yarn.svg
    :target: https://pypi.org/project/dask-yarn/
+.. |conda| image:: https://img.shields.io/conda/vn/conda-forge/dask-yarn.svg
+   :target: https://anaconda.org/conda-forge/dask-yarn
 .. |readthedocs| image:: https://readthedocs.org/projects/dask-yarn/badge/?version=latest
     :target: https://dask-yarn.readthedocs.io/en/latest/?badge=latest
