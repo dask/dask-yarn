@@ -15,19 +15,24 @@ from tornado import gen
 def main(args=None):
     parser = argparse.ArgumentParser(prog="dask-yarn-worker",
                                      description="Start a dask worker on YARN")
-    parser.add_argument("nthreads", type=int, help="Number of threads")
-    parser.add_argument("--memory_limit", help="Memory limit", default="auto")
+    parser.add_argument("--nthreads", type=int, help="Number of threads")
+    parser.add_argument("--memory_limit", help="Memory limit")
     kwargs = vars(parser.parse_args(args=args))
     start_worker(**kwargs)
 
 
-def start_worker(nthreads, memory_limit="auto"):
+def start_worker(nthreads=None, memory_limit=None):
     enable_proctitle_on_current()
     enable_proctitle_on_children()
 
+    if memory_limit is None:
+        memory_limit = int(skein.properties.container_resources.memory * 1e6)
+    if nthreads is None:
+        nthreads = skein.properties.container_resources.vcores
+
     app_client = skein.ApplicationClient.from_current()
 
-    scheduler = app_client.kv.wait('dask.scheduler')
+    scheduler = app_client.kv.wait('dask.scheduler').decode()
 
     loop = IOLoop.current()
 

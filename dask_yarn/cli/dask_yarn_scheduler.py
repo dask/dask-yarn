@@ -45,14 +45,14 @@ def main():
 
     install_signal_handlers(loop)
 
-    app_client.kv['dask.scheduler'] = scheduler.address
+    app_client.kv['dask.scheduler'] = scheduler.address.encode()
 
     if bokeh:
         bokeh_port = scheduler.services['bokeh'].port
         bokeh_host = urlparse(scheduler.address).hostname
         bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
 
-        app_client.kv['dask.dashboard'] = bokeh_address
+        app_client.kv['dask.dashboard'] = bokeh_address.encode()
 
     try:
         loop.start()
