@@ -18,6 +18,10 @@ source activate test-environment
 
 pip install grpcio-tools conda-pack 
 
+if [[ $1 == '2.7' ]]; then
+    pip install backports.weakref
+fi
+
 pip install git+https://github.com/jcrist/skein
 
 cd ~/dask-yarn
