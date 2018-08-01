@@ -82,7 +82,6 @@ def _make_specification(**kwargs):
                                   memory=int(scheduler_memory / 1e6)
                               ),
                               max_restarts=0,
-                              env={'DASK_CONFIG': '.config'},
                               files={'environment': environment},
                               commands=['source environment/bin/activate',
                                         'dask-yarn-scheduler'])
@@ -94,11 +93,9 @@ def _make_specification(**kwargs):
                            ),
                            max_restarts=worker_restarts,
                            depends=['dask.scheduler'],
-                           env={'DASK_CONFIG': '.config'},
                            files={'environment': environment},
                            commands=['source environment/bin/activate',
-                                     ('dask-yarn-worker %d --memory_limit %d'
-                                      % (worker_vcores, worker_memory))])
+                                     'dask-yarn-worker'])
 
     spec = skein.ApplicationSpec(name=name,
                                  queue=queue,
@@ -153,7 +150,7 @@ class YarnCluster(object):
                  n_workers=None,
                  worker_vcores=None,
                  worker_memory=None,
-                 worker_max_restarts=None,
+                 worker_restarts=None,
                  scheduler_vcores=None,
                  scheduler_memory=None,
                  name=None,
@@ -165,7 +162,7 @@ class YarnCluster(object):
                                    n_workers=n_workers,
                                    worker_vcores=worker_vcores,
                                    worker_memory=worker_memory,
-                                   worker_max_restarts=worker_max_restarts,
+                                   worker_restarts=worker_restarts,
                                    scheduler_vcores=scheduler_vcores,
                                    scheduler_memory=scheduler_memory,
                                    name=name,
@@ -195,20 +192,19 @@ class YarnCluster(object):
         if skein_client is None:
             skein_client = skein.Client()
 
-        app = skein_client.submit(spec)
+        app = skein_client.submit_and_connect(spec)
         try:
-            application_client = app.connect()
-            scheduler_address = application_client.kv.wait('dask.scheduler')
-        except Exception:
+            scheduler_address = app.kv.wait('dask.scheduler').decode()
+        except BaseException:
             # Failed to connect, kill the application and reraise
-            app.kill()
+            skein_client.kill_application(app.id)
             raise
 
         # Ensure application gets cleaned up
-        self._finalizer = weakref.finalize(self, application_client.shutdown)
+        self._finalizer = weakref.finalize(self, app.shutdown)
 
-        self.app_id = app.app_id
-        self.application_client = application_client
+        self.app_id = app.id
+        self.application_client = app
         self.scheduler_address = scheduler_address
 
     def __repr__(self):
@@ -251,7 +247,7 @@ class YarnCluster(object):
 
     def workers(self):
         """A list of all currently running worker containers."""
-        return self.application_client.containers(services=['dask.worker'])
+        return self.application_client.get_containers(services=['dask.worker'])
 
     def scale_up(self, n, workers=None):
         """Ensure there are atleast n dask workers available for this cluster.
@@ -307,7 +303,7 @@ class YarnCluster(object):
             pending = [w for w in workers if w.state in ('waiting', 'requested')]
 
             for c in pending[:n_to_delete]:
-                self.application_client.kill(c.id)
+                self.application_client.kill_container(c.id)
                 n_to_delete -= 1
 
             if n_to_delete:

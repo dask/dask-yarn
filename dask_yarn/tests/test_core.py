@@ -33,12 +33,12 @@ def skein_client():
 
 def check_is_shutdown(client, app_id, status='SUCCEEDED'):
     timeleft = 5
-    report = client.status(app_id)
+    report = client.application_report(app_id)
     while report.state not in ('FINISHED', 'FAILED', 'KILLED'):
         time.sleep(0.1)
         timeleft -= 0.1
         if timeleft < 0:
-            client.kill(app_id)
+            client.kill_application(app_id)
             assert False, "Application wasn't properly terminated"
 
     assert report.final_status == status
