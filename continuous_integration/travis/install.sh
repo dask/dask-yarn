@@ -8,6 +8,7 @@ conda create -n test-environment \
     dask \
     distributed \
     flake8 \
+    protobuf \
     grpcio \
     nomkl \
     pytest \
