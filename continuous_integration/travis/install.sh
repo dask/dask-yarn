@@ -16,13 +16,14 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install grpcio-tools conda-pack 
+pip install conda-pack 
+pip install --no-deps grpcio-tools
 
 if [[ $1 == '2.7' ]]; then
     pip install backports.weakref
 fi
 
-pip install git+https://github.com/jcrist/skein
+pip install --no-deps git+https://github.com/jcrist/skein
 
 cd ~/dask-yarn
 pip install -v --no-deps .
