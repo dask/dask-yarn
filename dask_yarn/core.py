@@ -53,6 +53,7 @@ def _make_specification(**kwargs):
     worker_vcores = either('worker_vcores', 'yarn.worker.vcores')
     worker_memory = either('worker_memory', 'yarn.worker.memory')
     worker_restarts = either('worker_restarts', 'yarn.worker.restarts')
+    worker_env = either('worker_env', 'yarn.worker.env')
     scheduler_vcores = either('scheduler_vcores', 'yarn.scheduler.vcores')
     scheduler_memory = either('scheduler_memory', 'yarn.scheduler.memory')
 
@@ -94,6 +95,7 @@ def _make_specification(**kwargs):
                            max_restarts=worker_restarts,
                            depends=['dask.scheduler'],
                            files={'environment': environment},
+                           env=worker_env,
                            commands=['source environment/bin/activate',
                                      'dask-yarn-worker'])
 
@@ -126,6 +128,9 @@ class YarnCluster(object):
     worker_restarts : int, optional
         The maximum number of worker restarts to allow before failing the
         application. Default is unlimited.
+    worker_env : dict, optional
+        A mapping of environment variables to their values. These will be set
+        in the worker containers before starting the dask workers.
     scheduler_vcores : int, optional
         The number of virtual cores to allocate per scheduler.
     scheduler_memory : str, optional
@@ -151,6 +156,7 @@ class YarnCluster(object):
                  worker_vcores=None,
                  worker_memory=None,
                  worker_restarts=None,
+                 worker_env=None,
                  scheduler_vcores=None,
                  scheduler_memory=None,
                  name=None,
@@ -163,6 +169,7 @@ class YarnCluster(object):
                                    worker_vcores=worker_vcores,
                                    worker_memory=worker_memory,
                                    worker_restarts=worker_restarts,
+                                   worker_env=worker_env,
                                    scheduler_vcores=scheduler_vcores,
                                    scheduler_memory=scheduler_memory,
                                    name=name,

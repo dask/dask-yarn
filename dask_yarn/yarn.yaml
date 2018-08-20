@@ -17,3 +17,4 @@ yarn:
     memory: 2GiB
     count: 0                # Number of workers to start on initialization
     restarts: -1            # Allowed number of restarts, -1 for unlimited
+    env: {}                 # A map of environment variables to set on the worker

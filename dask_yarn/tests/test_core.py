@@ -88,7 +88,8 @@ def test_configuration():
         'name': 'dask-yarn-tests',
         'tags': ['a', 'b', 'c'],
         'specification': None,
-        'worker': {'memory': '1234MB', 'count': 1, 'vcores': 1, 'restarts': -1},
+        'worker': {'memory': '1234MB', 'count': 1, 'vcores': 1, 'restarts': -1,
+                   'env': {'foo': 'bar'}},
         'scheduler': {'memory': '1234MB', 'vcores': 1}}
     }
 
@@ -98,6 +99,7 @@ def test_configuration():
         assert spec.queue == 'myqueue'
         assert spec.tags == {'a', 'b', 'c'}
         assert spec.services['dask.worker'].resources.memory == 1234
+        assert spec.services['dask.worker'].env == {'foo': 'bar'}
         assert spec.services['dask.scheduler'].resources.memory == 1234
 
 
