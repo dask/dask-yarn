@@ -58,9 +58,9 @@ def _make_specification(**kwargs):
     scheduler_memory = either('scheduler_memory', 'yarn.scheduler.memory')
 
     if environment is None:
-        msg = ("You must provide a path to an archived python environment for "
+        msg = ("You must provide a path to an archived Python environment for "
                "the workers.\n"
-               "This is commonly achieved through conda-pack.\n\n"
+               "This is commonly achieved through conda-pack or venv-pack.\n\n"
                "See https://dask-yarn.readthedocs.io/en/latest/"
                "#distributing-python-environments for more information")
         raise ValueError(msg)
@@ -117,7 +117,7 @@ class YarnCluster(object):
     Parameters
     ----------
     environment : str, optional
-        Path to an archived Conda environment (either ``tar.gz`` or ``zip``).
+        Path to an archived Python environment (either ``tar.gz`` or ``zip``).
     n_workers : int, optional
         The number of workers to initially start.
     worker_vcores : int, optional
