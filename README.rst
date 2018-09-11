@@ -9,8 +9,7 @@ clusters, such as are found in traditional Hadoop installations. Dask-Yarn
 provides an easy interface to quickly start, stop, and scale Dask clusters
 natively from Python.
 
-See `the documentation <https://dask-yarn.readthedocs.org>`_ for more
-information.
+See `the documentation <http://yarn.dask.org>`_ for more information.
 
 
 LICENSE
@@ -26,4 +25,4 @@ New BSD. See the
 .. |conda| image:: https://img.shields.io/conda/vn/conda-forge/dask-yarn.svg
    :target: https://anaconda.org/conda-forge/dask-yarn
 .. |readthedocs| image:: https://readthedocs.org/projects/dask-yarn/badge/?version=latest
-    :target: https://dask-yarn.readthedocs.io/en/latest/?badge=latest
+    :target: http://yarn.dask.org

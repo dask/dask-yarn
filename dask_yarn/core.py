@@ -61,7 +61,7 @@ def _make_specification(**kwargs):
         msg = ("You must provide a path to an archived Python environment for "
                "the workers.\n"
                "This is commonly achieved through conda-pack or venv-pack.\n\n"
-               "See https://dask-yarn.readthedocs.io/en/latest/"
+               "See http://yarn.dask.org/"
                "#distributing-python-environments for more information")
         raise ValueError(msg)
 
