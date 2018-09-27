@@ -111,7 +111,7 @@ class YarnCluster(object):
     """Start a Dask cluster on YARN.
 
     You can define default values for this in Dask's ``yarn.yaml``
-    configuration file. See http://dask.pydata.org/en/latest/configuration.html
+    configuration file. See http://dask.org/en/latest/configuration.html
     for more information.
 
     Parameters
