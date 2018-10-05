@@ -174,7 +174,7 @@ information.
    cluster.scale(20)
 
 For more information on Dask configuration see the `Dask configuration
-documentation <https://dask.org/en/latest/configuration.html>`_.
+documentation <https://docs.dask.org/en/latest/configuration.html>`_.
 
 
 .. toctree::
