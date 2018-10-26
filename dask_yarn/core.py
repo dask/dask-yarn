@@ -284,7 +284,7 @@ class YarnCluster(object):
         client = self._dask_client()
         worker_info = client.scheduler_info()['workers']
         # Sort workers by memory used
-        workers = sorted((v['memory'], k) for k, v in worker_info.items())
+        workers = sorted((v['metrics']['memory'], k) for k, v in worker_info.items())
         # Return just the ips
         return [w[1] for w in workers[:n]]
 
