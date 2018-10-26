@@ -25,7 +25,7 @@ def conda_env():
     return envpath
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture
 def skein_client():
     with skein.Client() as client:
         yield client
