@@ -1,4 +1,4 @@
 dask>=0.18.0
-distributed>=1.22.0
+distributed>=1.23.0
 skein>=0.1.0
 backports.weakref;python_version<="3.4"
