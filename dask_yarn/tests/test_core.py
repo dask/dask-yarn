@@ -46,8 +46,8 @@ def check_is_shutdown(client, app_id, status='SUCCEEDED'):
 
 def test_basic(skein_client, conda_env, loop):
     with YarnCluster(environment=conda_env,
-                     worker_memory='512 MB',
-                     scheduler_memory='512 MB',
+                     worker_memory='512 MiB',
+                     scheduler_memory='512 MiB',
                      name=APPNAME,
                      skein_client=skein_client) as cluster:
         cluster.scale(2)
@@ -67,8 +67,8 @@ def test_basic(skein_client, conda_env, loop):
 
 def test_from_specification(skein_client, conda_env, tmpdir, loop):
     spec = _make_specification(environment=conda_env,
-                               worker_memory='512 MB',
-                               scheduler_memory='512 MB',
+                               worker_memory='512 MiB',
+                               scheduler_memory='512 MiB',
                                name=APPNAME)
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
@@ -88,9 +88,9 @@ def test_configuration():
         'name': 'dask-yarn-tests',
         'tags': ['a', 'b', 'c'],
         'specification': None,
-        'worker': {'memory': '1234MB', 'count': 1, 'vcores': 1, 'restarts': -1,
+        'worker': {'memory': '1234 MiB', 'count': 1, 'vcores': 1, 'restarts': -1,
                    'env': {'foo': 'bar'}},
-        'scheduler': {'memory': '1234MB', 'vcores': 1}}
+        'scheduler': {'memory': '1234 MiB', 'vcores': 1}}
     }
 
     with dask.config.set(config):
@@ -105,8 +105,8 @@ def test_configuration():
 
 def test_configuration_full_specification(conda_env, tmpdir):
     spec = _make_specification(environment=conda_env,
-                               worker_memory='512 MB',
-                               scheduler_memory='512 MB',
+                               worker_memory='512 MiB',
+                               scheduler_memory='512 MiB',
                                name=APPNAME)
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
@@ -144,12 +144,12 @@ def test_make_specification_errors():
     with pytest.raises(ValueError) as info:
         _make_specification(environment='foo.tar.gz', worker_memory=1234)
 
-        assert '1234 MB' in str(info.value)
+        assert '1234 MiB' in str(info.value)
 
     with pytest.raises(ValueError) as info:
         _make_specification(environment='foo.tar.gz', scheduler_memory=1234)
 
-        assert '1234 MB' in str(info.value)
+        assert '1234 MiB' in str(info.value)
 
 
 def test_environment_relative_paths(conda_env):

@@ -25,7 +25,7 @@ def start_worker(nthreads=None, memory_limit=None):
     enable_proctitle_on_children()
 
     if memory_limit is None:
-        memory_limit = int(skein.properties.container_resources.memory * 1e6)
+        memory_limit = int(skein.properties.container_resources.memory * 2**20)
     if nthreads is None:
         nthreads = skein.properties.container_resources.vcores
 

@@ -15,14 +15,14 @@ else:
     import weakref
 
 
-memory_warning = """
+_memory_error = """The `{0}_memory` keyword takes string parameters
+that include units like "4 GiB" or "2048 MiB"
 
-The memory keywords takes string parameters
-that include units like "4 GiB" or "2048 MB"
-
-You provided:       %d
-Perhaps you meant: "%d MB"
+You provided:       {1}
+Perhaps you meant: "{1} MiB"
 """
+
+_one_MiB = 2**20
 
 
 # exposed for testing only
@@ -69,18 +69,18 @@ def _make_specification(**kwargs):
 
     if isinstance(scheduler_memory, str):
         scheduler_memory = dask.utils.parse_bytes(scheduler_memory)
+    elif scheduler_memory < _one_MiB:
+        raise ValueError(_memory_error.format('scheduler', scheduler_memory))
+
     if isinstance(worker_memory, str):
         worker_memory = dask.utils.parse_bytes(worker_memory)
-
-    if scheduler_memory < 2**20:
-        raise ValueError(memory_warning % (scheduler_memory, scheduler_memory))
-    if worker_memory < 2**20:
-        raise ValueError(memory_warning % (worker_memory, worker_memory))
+    elif worker_memory < _one_MiB:
+        raise ValueError(_memory_error.format('worker', worker_memory))
 
     scheduler = skein.Service(instances=1,
                               resources=skein.Resources(
                                   vcores=scheduler_vcores,
-                                  memory=int(scheduler_memory / 1e6)
+                                  memory=int(scheduler_memory / _one_MiB)
                               ),
                               max_restarts=0,
                               files={'environment': environment},
@@ -90,7 +90,7 @@ def _make_specification(**kwargs):
     worker = skein.Service(instances=n_workers,
                            resources=skein.Resources(
                                vcores=worker_vcores,
-                               memory=int(worker_memory / 1e6)
+                               memory=int(worker_memory / _one_MiB)
                            ),
                            max_restarts=worker_restarts,
                            depends=['dask.scheduler'],
@@ -124,7 +124,7 @@ class YarnCluster(object):
         The number of virtual cores to allocate per worker.
     worker_memory : str, optional
         The amount of memory to allocate per worker. Accepts a unit suffix
-        (e.g. '2 GiB' or '4096 MB').
+        (e.g. '2 GiB' or '4096 MiB'). Will be rounded up to the nearest MiB.
     worker_restarts : int, optional
         The maximum number of worker restarts to allow before failing the
         application. Default is unlimited.
@@ -135,7 +135,8 @@ class YarnCluster(object):
         The number of virtual cores to allocate per scheduler.
     scheduler_memory : str, optional
         The amount of memory to allocate to the scheduler. Accepts a unit
-        suffix (e.g. '2 GiB' or '4096 MB')
+        suffix (e.g. '2 GiB' or '4096 MiB'). Will be rounded up to the nearest
+        MiB.
     name : str, optional
         The application name.
     queue : str, optional
