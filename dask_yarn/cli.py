@@ -98,7 +98,7 @@ entry_subs.required = True
 
 
 @subcommand(entry_subs,
-            'scheduler', 'Start the dask scheduler')
+            'scheduler', 'Start a Dask scheduler on YARN')
 def scheduler():
     app_client = skein.ApplicationClient.from_current()
 
@@ -144,9 +144,15 @@ def scheduler():
 
 
 @subcommand(entry_subs,
-            'worker', 'Start a dask worker',
-            arg("--nthreads", type=int, help="Number of threads"),
-            arg("--memory_limit", help="Memory limit"))
+            'worker', 'Start a Dask worker on YARN',
+            arg("--nthreads", type=int,
+                help=("Number of threads. Defaults to number of vcores in "
+                      "container")),
+            arg("--memory_limit", type=str,
+                help=("Maximum memory available to the worker. This can be an "
+                      "integer (in bytes), a string (like '5 GiB' or '500 "
+                      "MiB'), or 0 (no memory management). Defaults to the "
+                      "container memory limit.")))
 def worker(nthreads=None, memory_limit=None):
     enable_proctitle_on_current()
     enable_proctitle_on_children()

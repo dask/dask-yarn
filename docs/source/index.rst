@@ -181,3 +181,4 @@ documentation <https://docs.dask.org/en/latest/configuration.html>`_.
     :hidden:
 
     api.rst
+    cli.rst
