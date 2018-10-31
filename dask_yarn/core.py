@@ -44,16 +44,18 @@ def _make_specification(**kwargs):
     def either(a, b):
         return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
 
-    environment = either('environment', 'yarn.environment')
     name = either('name', 'yarn.name')
     queue = either('queue', 'yarn.queue')
     tags = either('tags', 'yarn.tags')
-    queue = either('queue', 'yarn.queue')
+
+    environment = either('environment', 'yarn.environment')
+
     n_workers = either('n_workers', 'yarn.worker.count')
     worker_vcores = either('worker_vcores', 'yarn.worker.vcores')
     worker_memory = either('worker_memory', 'yarn.worker.memory')
     worker_restarts = either('worker_restarts', 'yarn.worker.restarts')
     worker_env = either('worker_env', 'yarn.worker.env')
+
     scheduler_vcores = either('scheduler_vcores', 'yarn.scheduler.vcores')
     scheduler_memory = either('scheduler_memory', 'yarn.scheduler.memory')
 
@@ -215,6 +217,53 @@ class YarnCluster(object):
         self.application_client = app
         self.scheduler_address = scheduler_address
 
+    @classmethod
+    def from_current(cls):
+        """Connect to an existing ``YarnCluster`` from inside the cluster.
+
+        Returns
+        -------
+        YarnCluster
+        """
+        self = super(YarnCluster, cls).__new__(cls)
+        app = skein.ApplicationClient.from_current()
+        self._connect_existing(app)
+        return self
+
+    @classmethod
+    def from_application_id(cls, app_id, skein_client=None):
+        """Connect to an existing ``YarnCluster`` with a given application id.
+
+        Parameters
+        ----------
+        app_id : str
+            The existing cluster's application id.
+        skein_client : skein.Client
+            The ``skein.Client`` to use. If not provided, one will be started.
+
+        Returns
+        -------
+        YarnCluster
+        """
+        self = super(YarnCluster, cls).__new__(cls)
+        if skein_client is None:
+            skein_client = skein.Client()
+        app = skein_client.connect(app_id)
+        self._connect_existing(app)
+        return self
+
+    def _connect_existing(self, app):
+        spec = app.get_specification()
+        if 'dask.worker' not in spec.services:
+            raise ValueError("%r is not a valid dask cluster" % app.id)
+
+        scheduler_address = app.kv.wait('dask.scheduler').decode()
+
+        self._finalizer = None
+        self.app_id = app.id
+        self.application_client = app
+        self.scheduler_address = scheduler_address
+
     def __repr__(self):
         return 'YarnCluster<%r>' % self.scheduler_address
 
@@ -235,7 +284,9 @@ class YarnCluster(object):
         status : {'SUCCEEDED', 'FAILED', 'KILLED'}, optional
             The yarn application exit status.
         """
-        self._finalizer.detach()  # don't call shutdown later
+        if self._finalizer is not None:
+            self._finalizer.detach()  # don't call shutdown later
+            self._finalizer = None
         self.application_client.shutdown(status=status)
 
     def close(self, **kwargs):
