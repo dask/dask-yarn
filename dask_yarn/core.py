@@ -1,6 +1,6 @@
 from __future__ import absolute_import, print_function, division
 
-import os
+import math
 import sys
 
 import dask
@@ -15,14 +15,26 @@ else:
     import weakref
 
 
-_memory_error = """The `{0}_memory` keyword takes string parameters
-that include units like "4 GiB" or "2048 MiB"
+_memory_error = """Memory specification for the `{0}` take string parameters
+with units like "4 GiB" or "2048 MiB"
 
 You provided:       {1}
 Perhaps you meant: "{1} MiB"
 """
 
 _one_MiB = 2**20
+
+
+def parse_memory(memory, field):
+    if isinstance(memory, str):
+        memory = dask.utils.parse_bytes(memory)
+    elif memory < _one_MiB:
+        raise ValueError(_memory_error.format(field, memory))
+    return int(math.ceil(memory / _one_MiB))
+
+
+def lookup(kwargs, a, b):
+    return kwargs[a] if a in kwargs else dask.config.get(b)
 
 
 # exposed for testing only
@@ -41,23 +53,20 @@ def _make_specification(**kwargs):
             return skein.ApplicationSpec.from_dict(spec)
         return skein.ApplicationSpec.from_file(spec)
 
-    def either(a, b):
-        return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
+    name = lookup(kwargs, 'name', 'yarn.name')
+    queue = lookup(kwargs, 'queue', 'yarn.queue')
+    tags = lookup(kwargs, 'tags', 'yarn.tags')
 
-    name = either('name', 'yarn.name')
-    queue = either('queue', 'yarn.queue')
-    tags = either('tags', 'yarn.tags')
+    environment = lookup(kwargs, 'environment', 'yarn.environment')
 
-    environment = either('environment', 'yarn.environment')
+    n_workers = lookup(kwargs, 'n_workers', 'yarn.worker.count')
+    worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
+    worker_memory = lookup(kwargs, 'worker_memory', 'yarn.worker.memory')
+    worker_restarts = lookup(kwargs, 'worker_restarts', 'yarn.worker.restarts')
+    worker_env = lookup(kwargs, 'worker_env', 'yarn.worker.env')
 
-    n_workers = either('n_workers', 'yarn.worker.count')
-    worker_vcores = either('worker_vcores', 'yarn.worker.vcores')
-    worker_memory = either('worker_memory', 'yarn.worker.memory')
-    worker_restarts = either('worker_restarts', 'yarn.worker.restarts')
-    worker_env = either('worker_env', 'yarn.worker.env')
-
-    scheduler_vcores = either('scheduler_vcores', 'yarn.scheduler.vcores')
-    scheduler_memory = either('scheduler_memory', 'yarn.scheduler.memory')
+    scheduler_vcores = lookup(kwargs, 'scheduler_vcores', 'yarn.scheduler.vcores')
+    scheduler_memory = lookup(kwargs, 'scheduler_memory', 'yarn.scheduler.memory')
 
     if environment is None:
         msg = ("You must provide a path to an archived Python environment for "
@@ -67,22 +76,13 @@ def _make_specification(**kwargs):
                "#distributing-python-environments for more information")
         raise ValueError(msg)
 
-    environment = os.path.abspath(environment)
-
-    if isinstance(scheduler_memory, str):
-        scheduler_memory = dask.utils.parse_bytes(scheduler_memory)
-    elif scheduler_memory < _one_MiB:
-        raise ValueError(_memory_error.format('scheduler', scheduler_memory))
-
-    if isinstance(worker_memory, str):
-        worker_memory = dask.utils.parse_bytes(worker_memory)
-    elif worker_memory < _one_MiB:
-        raise ValueError(_memory_error.format('worker', worker_memory))
+    scheduler_memory = parse_memory(scheduler_memory, 'scheduler')
+    worker_memory = parse_memory(worker_memory, 'worker')
 
     scheduler = skein.Service(instances=1,
                               resources=skein.Resources(
                                   vcores=scheduler_vcores,
-                                  memory=int(scheduler_memory / _one_MiB)
+                                  memory=scheduler_memory
                               ),
                               max_restarts=0,
                               files={'environment': environment},
@@ -92,7 +92,7 @@ def _make_specification(**kwargs):
     worker = skein.Service(instances=n_workers,
                            resources=skein.Resources(
                                vcores=worker_vcores,
-                               memory=int(worker_memory / _one_MiB)
+                               memory=worker_memory
                            ),
                            max_restarts=worker_restarts,
                            depends=['dask.scheduler'],
@@ -106,6 +106,29 @@ def _make_specification(**kwargs):
                                  tags=tags,
                                  services={'dask.scheduler': scheduler,
                                            'dask.worker': worker})
+    return spec
+
+
+def _make_submit_specification(script, **kwargs):
+    client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
+    client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
+    client_memory = parse_memory(client_memory, 'client')
+
+    spec = _make_specification(**kwargs)
+    environment = spec.services['dask.worker'].files['environment']
+
+    client = skein.Service(instances=1,
+                           resources=skein.Resources(
+                               vcores=client_vcores,
+                               memory=client_memory
+                           ),
+                           max_restarts=0,
+                           depends=['dask.scheduler'],
+                           files={'environment': environment,
+                                  script: script},
+                           commands=['source environment/bin/activate',
+                                     'python %s' % script])
+    spec.services['dask.client'] = client
     return spec
 
 

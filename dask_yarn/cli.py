@@ -18,6 +18,7 @@ else:
     from urlparse import urlparse
 
 from . import __version__
+from .core import _make_submit_specification
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -98,7 +99,7 @@ entry_subs.required = True
 
 
 @subcommand(entry_subs,
-            'scheduler', 'Start a Dask scheduler on YARN')
+            'scheduler', 'Start a Dask scheduler')
 def scheduler():
     app_client = skein.ApplicationClient.from_current()
 
@@ -144,7 +145,7 @@ def scheduler():
 
 
 @subcommand(entry_subs,
-            'worker', 'Start a Dask worker on YARN',
+            'worker', 'Start a Dask worker',
             arg("--nthreads", type=int,
                 help=("Number of threads. Defaults to number of vcores in "
                       "container")),
@@ -187,6 +188,79 @@ def worker(nthreads=None, memory_limit=None):
         loop.run_sync(run)
     except (KeyboardInterrupt, TimeoutError):
         pass
+
+
+def parse_env(service, env):
+    out = {}
+    if env is None:
+        return out
+    for item in env:
+        elements = item.split('=')
+        if len(elements) != 2:
+            raise ValueError("Invalid parameter to --%s-env: %r" % (service, env))
+        key, val = elements
+        out[key.strip()] = val.strip()
+    return out
+
+
+@subcommand(entry_subs,
+            'submit', 'Submit a Dask application to a YARN cluster',
+            arg("script", help="Path to a python script to run on the client"),
+            arg("--name", help="The application name"),
+            arg("--queue", help="The queue to deploy to"),
+            arg("--tags",
+                help=("A comma-separated list of strings to use as "
+                      "tags for this application.")),
+            arg("--environment",
+                help=("Path to an archived Python environment (either "
+                      "``tar.gz`` or ``zip``).")),
+            arg("--worker-count", type=int,
+                help="The number of workers to initially start."),
+            arg("--worker-vcores", type=int,
+                help="The number of virtual cores to allocate per worker."),
+            arg("--worker-memory", type=str,
+                help=("The amount of memory to allocate per worker. Accepts a "
+                      "unit suffix (e.g. '2 GiB' or '4096 MiB'). Will be "
+                      "rounded up to the nearest MiB.")),
+            arg("--worker-restarts", type=int,
+                help=("The maximum number of worker restarts to allow before "
+                      "failing the application. Default is unlimited.")),
+            arg("--worker-env", type=str, action='append',
+                help=("Environment variables to set on the workers. Pass a "
+                      "key-value pair like ``--worker-env key=val``. May "
+                      "be used more than once.")),
+            arg("--client-vcores", type=int,
+                help="The number of virtual cores to allocate for the client."),
+            arg("--client-memory", type=str,
+                help=("The amount of memory to allocate for the client. "
+                      "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
+                      "Will be rounded up to the nearest MiB.")),
+            arg("--client-env", type=str, action='append',
+                help=("Environment variables to set on the client. Pass a "
+                      "key-value pair like ``--client-env key=val``. May "
+                      "be used more than once.")),
+            arg("--scheduler-vcores", type=int,
+                help="The number of virtual cores to allocate for the scheduler."),
+            arg("--scheduler-memory", type=str,
+                help=("The amount of memory to allocate for the scheduler. "
+                      "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
+                      "Will be rounded up to the nearest MiB.")))
+def submit(script, **kwargs):
+    # Filter out all unset kwargs
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}
+
+    if 'worker_env' in kwargs:
+        kwargs['worker_env'] = parse_env('worker', kwargs['worker_env'])
+    if 'client_env' in kwargs:
+        kwargs['client_env'] = parse_env('client', kwargs['client_env'])
+    if 'tags' in kwargs:
+        kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
+    if 'worker_count' in kwargs:
+        kwargs['n_workers'] = kwargs.pop('worker_count')
+
+    spec = _make_submit_specification(script, **kwargs)
+    app_id = skein.Client().submit(spec)
+    print(app_id)
 
 
 def main(args=None):
