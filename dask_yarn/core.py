@@ -85,7 +85,7 @@ def _make_specification(**kwargs):
                               max_restarts=0,
                               files={'environment': environment},
                               commands=['source environment/bin/activate',
-                                        'dask-yarn-scheduler'])
+                                        'dask-yarn scheduler'])
 
     worker = skein.Service(instances=n_workers,
                            resources=skein.Resources(
@@ -97,7 +97,7 @@ def _make_specification(**kwargs):
                            files={'environment': environment},
                            env=worker_env,
                            commands=['source environment/bin/activate',
-                                     'dask-yarn-worker'])
+                                     'dask-yarn worker'])
 
     spec = skein.ApplicationSpec(name=name,
                                  queue=queue,
