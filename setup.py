@@ -13,12 +13,11 @@ setup(name='dask-yarn',
       license='BSD',
       description='Deploy dask clusters on Apache YARN',
       long_description=long_description,
-      packages=['dask_yarn', 'dask_yarn.cli'],
+      packages=['dask_yarn'],
       include_package_data=True,
       install_requires=install_requires,
       entry_points='''
         [console_scripts]
-        dask-yarn-worker=dask_yarn.cli.dask_yarn_worker:main
-        dask-yarn-scheduler=dask_yarn.cli.dask_yarn_scheduler:main
+        dask-yarn=dask_yarn.cli:main
       ''',
       zip_safe=False)
