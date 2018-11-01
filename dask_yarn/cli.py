@@ -4,6 +4,7 @@ import argparse
 import sys
 
 import skein
+from skein.utils import format_table, humanize_timedelta
 from tornado import gen
 from tornado.ioloop import IOLoop, TimeoutError
 from distributed import Scheduler, Nanny
@@ -258,6 +259,40 @@ def submit(script, **kwargs):
     spec = _make_submit_specification(script, **kwargs)
     app_id = skein.Client().submit(spec)
     print(app_id)
+
+
+app_id = arg('app_id', help='The application id', metavar='APP_ID')
+
+
+@subcommand(entry_subs,
+            'status', 'Check the status of a submitted Dask application',
+            app_id)
+def status(app_id):
+    report = skein.Client().application_report(app_id)
+    header = ['application_id',
+              'name',
+              'state',
+              'status',
+              'containers',
+              'vcores',
+              'memory',
+              'runtime']
+    data = [(report.id,
+             report.name,
+             report.state,
+             report.final_status,
+             report.usage.num_used_containers,
+             report.usage.used_resources.vcores,
+             report.usage.used_resources.memory,
+             humanize_timedelta(report.runtime))]
+    print(format_table(header, data))
+
+
+@subcommand(entry_subs,
+            'kill', 'Kill a Dask application',
+            app_id)
+def kill(app_id):
+    skein.Client().kill_application(app_id)
 
 
 def main(args=None):
