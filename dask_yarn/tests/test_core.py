@@ -154,10 +154,18 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
         # Smoketest method
         cluster2.workers()
 
+        finalizer = cluster2._finalizer
+        assert finalizer is not None
         del cluster2
 
-        # Cluster is still running, finalizer not run in cluster2
-        cluster.workers()
+        # finalizer didn't run
+        assert finalizer.peek() is not None
+        # Manually run finalizer, would normally be called at exit
+        finalizer()
+
+        # Remove finalizer from cluster to prevent double-calling
+        cluster._finalizer.detach()
+        cluster._finalizer = None
 
     check_is_shutdown(skein_client, cluster.app_id)
 

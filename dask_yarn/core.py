@@ -34,7 +34,7 @@ def parse_memory(memory, field):
 
 
 def lookup(kwargs, a, b):
-    return kwargs[a] if a in kwargs else dask.config.get(b)
+    return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
 
 
 # exposed for testing only
@@ -241,8 +241,14 @@ class YarnCluster(object):
         self.scheduler_address = scheduler_address
 
     @classmethod
-    def from_current(cls):
+    def from_current(cls, shutdown_on_exit=True):
         """Connect to an existing ``YarnCluster`` from inside the cluster.
+
+        Parameters
+        ----------
+        shutdown_on_exit : bool
+            If True (default), the cluster will shutdown when this process
+            exits.  Set to False to have the cluster persist.
 
         Returns
         -------
@@ -251,6 +257,15 @@ class YarnCluster(object):
         self = super(YarnCluster, cls).__new__(cls)
         app = skein.ApplicationClient.from_current()
         self._connect_existing(app)
+
+        # If we want to shutdown on exit, create a finalizer to the app itself.
+        # This will never be called automatically by GC due to reference
+        # cycles, but will still be called atexit if it wasn't already detached
+        # by calling `shutdown` before then.
+        self._finalizer = (weakref.finalize(app, app.shutdown)
+                           if shutdown_on_exit
+                           else None)
+
         return self
 
     @classmethod
@@ -282,7 +297,6 @@ class YarnCluster(object):
 
         scheduler_address = app.kv.wait('dask.scheduler').decode()
 
-        self._finalizer = None
         self.app_id = app.id
         self.application_client = app
         self.scheduler_address = scheduler_address
@@ -307,10 +321,9 @@ class YarnCluster(object):
         status : {'SUCCEEDED', 'FAILED', 'KILLED'}, optional
             The yarn application exit status.
         """
-        if self._finalizer is not None:
+        if self._finalizer is not None and self._finalizer.peek() is not None:
+            self.application_client.shutdown(status=status)
             self._finalizer.detach()  # don't call shutdown later
-            self._finalizer = None
-        self.application_client.shutdown(status=status)
 
     def close(self, **kwargs):
         """Close this cluster. An alias for ``shutdown``.

@@ -246,16 +246,13 @@ def parse_env(service, env):
                       "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
                       "Will be rounded up to the nearest MiB.")))
 def submit(script, **kwargs):
-    # Filter out all unset kwargs
-    kwargs = {k: v for k, v in kwargs.items() if v is not None}
-
-    if 'worker_env' in kwargs:
+    if kwargs.get('worker_env'):
         kwargs['worker_env'] = parse_env('worker', kwargs['worker_env'])
-    if 'client_env' in kwargs:
+    if kwargs.get('client_env'):
         kwargs['client_env'] = parse_env('client', kwargs['client_env'])
-    if 'tags' in kwargs:
+    if kwargs.get('tags'):
         kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
-    if 'worker_count' in kwargs:
+    if kwargs.get('worker_count') is not None:
         kwargs['n_workers'] = kwargs.pop('worker_count')
 
     spec = _make_submit_specification(script, **kwargs)
