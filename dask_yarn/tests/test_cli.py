@@ -4,7 +4,7 @@ import pytest
 
 import dask_yarn
 from dask_yarn.cli import main
-from dask_yarn.tests.conftest import ensure_shutdown, wait_for_completion, get_logs
+from .conftest import ensure_shutdown, wait_for_completion, get_logs
 
 
 def run_command(command, error=False):

@@ -11,7 +11,7 @@ import pytest
 
 from dask_yarn import YarnCluster
 from dask_yarn.core import _make_specification, _make_submit_specification
-from dask_yarn.tests.conftest import check_is_shutdown
+from .conftest import check_is_shutdown
 
 
 def test_basic(skein_client, conda_env):

@@ -4,6 +4,7 @@ set -xe
 conda config --set always_yes yes --set changeps1 no
 
 conda create -n test-environment \
+    -c conda-forge \
     cryptography \
     dask \
     distributed \
@@ -17,7 +18,7 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install conda-pack 
+pip install conda-pack
 pip install --no-deps grpcio-tools
 
 if [[ $1 == '2.7' ]]; then

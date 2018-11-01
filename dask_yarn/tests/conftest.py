@@ -33,7 +33,14 @@ def check_is_shutdown(client, app_id, status='SUCCEEDED'):
             client.kill_application(app_id)
             assert False, "Application wasn't properly terminated"
 
-    assert report.final_status == status
+    if report.final_status != status:
+        logs = get_logs(app_id)
+        print('Expected application to terminate with status==%s, got status==%s\n'
+              '\n'
+              'Application Logs:\n'
+              '--------------------------------------------------------------------'
+              '%s', status, report.final_status, logs)
+        assert report.final_status == status
 
 
 @contextmanager
@@ -69,4 +76,5 @@ def get_logs(app_id, tries=3):
             return subprocess.check_output(command).decode()
         except Exception:
             pass
+        time.sleep(1)
     return subprocess.check_output(command).decode()
