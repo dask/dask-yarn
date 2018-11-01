@@ -191,7 +191,7 @@ def worker(nthreads=None, memory_limit=None):
         pass
 
 
-def parse_env(service, env):
+def _parse_env(service, env):
     out = {}
     if env is None:
         return out
@@ -202,6 +202,19 @@ def parse_env(service, env):
         key, val = elements
         out[key.strip()] = val.strip()
     return out
+
+
+# Exposed for testing
+def _parse_submit_kwargs(**kwargs):
+    if kwargs.get('worker_env'):
+        kwargs['worker_env'] = _parse_env('worker', kwargs['worker_env'])
+    if kwargs.get('client_env'):
+        kwargs['client_env'] = _parse_env('client', kwargs['client_env'])
+    if kwargs.get('tags'):
+        kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
+    if kwargs.get('worker_count') is not None:
+        kwargs['n_workers'] = kwargs.pop('worker_count')
+    return kwargs
 
 
 @subcommand(entry_subs,
@@ -247,15 +260,7 @@ def parse_env(service, env):
                       "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
                       "Will be rounded up to the nearest MiB.")))
 def submit(script, **kwargs):
-    if kwargs.get('worker_env'):
-        kwargs['worker_env'] = parse_env('worker', kwargs['worker_env'])
-    if kwargs.get('client_env'):
-        kwargs['client_env'] = parse_env('client', kwargs['client_env'])
-    if kwargs.get('tags'):
-        kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
-    if kwargs.get('worker_count') is not None:
-        kwargs['n_workers'] = kwargs.pop('worker_count')
-
+    kwargs = _parse_submit_kwargs(**kwargs)
     spec = _make_submit_specification(script, **kwargs)
     app_id = skein.Client().submit(spec)
     print(app_id)

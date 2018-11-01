@@ -1,53 +1,24 @@
+from __future__ import division, print_function, absolute_import
+
 import os
 import shutil
-import sys
 import time
 
-import conda_pack
 import dask
 from dask.distributed import Client
 from distributed.utils_test import inc
 import pytest
-import skein
 
 from dask_yarn import YarnCluster
-from dask_yarn.core import _make_specification
-
-APPNAME = 'dask-yarn-tests'
-
-
-@pytest.fixture(scope='module')
-def conda_env():
-    envpath = 'dask-yarn-py%d%d.tar.gz' % sys.version_info[:2]
-    if not os.path.exists(envpath):
-        conda_pack.pack(output=envpath, verbose=True)
-    return envpath
-
-
-@pytest.fixture(scope='module')
-def skein_client():
-    with skein.Client() as client:
-        yield client
-
-
-def check_is_shutdown(client, app_id, status='SUCCEEDED'):
-    timeleft = 5
-    report = client.application_report(app_id)
-    while report.state not in ('FINISHED', 'FAILED', 'KILLED'):
-        time.sleep(0.1)
-        timeleft -= 0.1
-        if timeleft < 0:
-            client.kill_application(app_id)
-            assert False, "Application wasn't properly terminated"
-
-    assert report.final_status == status
+from dask_yarn.core import _make_specification, _make_submit_specification
+from dask_yarn.tests.conftest import check_is_shutdown
 
 
 def test_basic(skein_client, conda_env):
     with YarnCluster(environment=conda_env,
                      worker_memory='512 MiB',
                      scheduler_memory='512 MiB',
-                     name=APPNAME,
+                     name='test-basic',
                      skein_client=skein_client) as cluster:
         # Smoketest repr
         repr(cluster)
@@ -81,7 +52,7 @@ def test_from_specification(skein_client, conda_env, tmpdir):
     spec = _make_specification(environment=conda_env,
                                worker_memory='512 MiB',
                                scheduler_memory='512 MiB',
-                               name=APPNAME)
+                               name='dask-yarn-test-from-specification')
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
         f.write(spec.to_yaml())
@@ -97,7 +68,7 @@ def test_from_application_id(skein_client, conda_env):
     with YarnCluster(environment=conda_env,
                      worker_memory='512 MiB',
                      scheduler_memory='512 MiB',
-                     name=APPNAME,
+                     name='test-from-application-id',
                      skein_client=skein_client) as cluster:
 
         # Connect to the application with the application id
@@ -127,7 +98,7 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
     with YarnCluster(environment=conda_env,
                      worker_memory='512 MiB',
                      scheduler_memory='512 MiB',
-                     name=APPNAME,
+                     name='test-from-current',
                      skein_client=skein_client) as cluster:
 
         # Patch environment so it looks like a container
@@ -196,7 +167,7 @@ def test_configuration_full_specification(conda_env, tmpdir):
     spec = _make_specification(environment=conda_env,
                                worker_memory='512 MiB',
                                scheduler_memory='512 MiB',
-                               name=APPNAME)
+                               name='test-configuration-full-specification')
     fn = os.path.join(str(tmpdir), 'spec.yaml')
     with open(fn, 'w') as f:
         f.write(spec.to_yaml())
@@ -236,6 +207,38 @@ def test_make_specification_errors():
     with pytest.raises(ValueError) as info:
         _make_specification(environment='foo.tar.gz', scheduler_memory=1234)
     assert '1234 MiB' in str(info.value)
+
+
+def test_make_submit_specification():
+    spec = _make_submit_specification('../script.py',
+                                      environment='myenv.tar.gz',
+                                      name='test-name',
+                                      client_vcores=2,
+                                      client_memory='2 GiB')
+
+    client = spec.services['dask.client']
+    scheduler = spec.services['dask.scheduler']
+    assert client.files['environment'] == scheduler.files['environment']
+    assert client.files['script.py'].source.startswith('file:///')
+    assert client.resources.memory == 2048
+    assert client.resources.vcores == 2
+
+    config = {
+        'yarn.name': 'dask-yarn-tests',
+        'yarn.queue': 'myqueue',
+        'yarn.environment': 'myenv.tar.gz',
+        'yarn.client.memory': '1234 MiB',
+        'yarn.client.vcores': 2,
+        'yarn.client.env': {'foo': 'bar'},
+    }
+
+    with dask.config.set(config):
+        spec = _make_submit_specification('script.py')
+        assert spec.name == 'dask-yarn-tests'
+        assert spec.queue == 'myqueue'
+        assert spec.services['dask.client'].resources.memory == 1234
+        assert spec.services['dask.client'].resources.vcores == 2
+        assert spec.services['dask.client'].env == {'foo': 'bar'}
 
 
 def test_environment_relative_paths(conda_env):

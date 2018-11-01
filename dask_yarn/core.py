@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function, division
 
 import math
+import os
 import sys
 
 import dask
@@ -112,11 +113,13 @@ def _make_specification(**kwargs):
 def _make_submit_specification(script, **kwargs):
     client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
     client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
+    client_env = lookup(kwargs, 'client_env', 'yarn.client.env')
     client_memory = parse_memory(client_memory, 'client')
 
     spec = _make_specification(**kwargs)
     environment = spec.services['dask.worker'].files['environment']
 
+    script_name = os.path.basename(script)
     client = skein.Service(instances=1,
                            resources=skein.Resources(
                                vcores=client_vcores,
@@ -125,11 +128,52 @@ def _make_submit_specification(script, **kwargs):
                            max_restarts=0,
                            depends=['dask.scheduler'],
                            files={'environment': environment,
-                                  script: script},
+                                  script_name: script},
+                           env=client_env,
                            commands=['source environment/bin/activate',
-                                     'python %s' % script])
+                                     'python %s' % script_name])
     spec.services['dask.client'] = client
     return spec
+
+
+class _GlobalExitHandler(object):
+    """A global handler to catch and record the reason for an application
+    shutting down, to be used in an atexit hook."""
+    def __init__(self):
+        self.exit_code = None
+        self.exception = None
+
+    def register(self):
+        self._old_exit, sys.exit = sys.exit, self.exit
+        self._old_excepthook, sys.excepthook = sys.excepthook, self.excepthook
+
+    def exit(self, code=0):
+        self.exit_code = code
+        self._old_exit(code)
+
+    def excepthook(self, exc_type, exc, *args):
+        self.exception = exc
+        self._old_excepthook(exc_type, exc, *args)
+
+    @property
+    def succeeded(self):
+        return (self.exception is None and
+                (self.exit_code is None or self.exit_code == 0))
+
+
+_EXIT_HANDLER = _GlobalExitHandler()
+
+
+def _shutdown_on_exit_handler(app):
+    if _EXIT_HANDLER.succeeded:
+        app.shutdown()
+    else:
+        app.shutdown('FAILED')
+
+
+def _shutdown_on_exit_finalizer(app):
+    _EXIT_HANDLER.register()
+    return weakref.finalize(app, _shutdown_on_exit_handler, app)
 
 
 class YarnCluster(object):
@@ -262,7 +306,7 @@ class YarnCluster(object):
         # This will never be called automatically by GC due to reference
         # cycles, but will still be called atexit if it wasn't already detached
         # by calling `shutdown` before then.
-        self._finalizer = (weakref.finalize(app, app.shutdown)
+        self._finalizer = (_shutdown_on_exit_finalizer(app)
                            if shutdown_on_exit
                            else None)
 

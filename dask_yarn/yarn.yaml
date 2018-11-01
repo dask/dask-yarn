@@ -22,3 +22,4 @@ yarn:
   client:                   # Specification of client container
     vcores: 1
     memory: 2GiB
+    env: {}
