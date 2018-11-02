@@ -110,7 +110,7 @@ def _make_specification(**kwargs):
     return spec
 
 
-def _make_submit_specification(script, **kwargs):
+def _make_submit_specification(script, args=(), **kwargs):
     client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
     client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
     client_env = lookup(kwargs, 'client_env', 'yarn.client.env')
@@ -120,19 +120,23 @@ def _make_submit_specification(script, **kwargs):
     environment = spec.services['dask.worker'].files['environment']
 
     script_name = os.path.basename(script)
-    client = skein.Service(instances=1,
-                           resources=skein.Resources(
-                               vcores=client_vcores,
-                               memory=client_memory
-                           ),
-                           max_restarts=0,
-                           depends=['dask.scheduler'],
-                           files={'environment': environment,
-                                  script_name: script},
-                           env=client_env,
-                           commands=['source environment/bin/activate',
-                                     'dask-yarn services client %s' % script_name])
-    spec.services['dask.client'] = client
+
+    spec.services['dask.client'] = skein.Service(
+        instances=1,
+        resources=skein.Resources(
+            vcores=client_vcores,
+            memory=client_memory
+        ),
+        max_restarts=0,
+        depends=['dask.scheduler'],
+        files={'environment': environment,
+               script_name: script},
+        env=client_env,
+        commands=[
+            'source environment/bin/activate',
+            'dask-yarn services client %s %s' % (script_name, ' '.join(args))
+        ]
+    )
     return spec
 
 

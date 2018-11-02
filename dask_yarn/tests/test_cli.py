@@ -129,6 +129,40 @@ def test_cli_submit_and_status(script_kind, final_status, searchtxt,
     assert searchtxt in logs
 
 
+def test_cli_submit_with_args(tmpdir, conda_env, skein_client, capfd):
+    script = ('import sys\n'
+              'args = sys.argv[1:]\n'
+              'assert args == ["a", "b", "c"]\n'
+              'print("Done!")')
+
+    script_path = str(tmpdir.join('script.py'))
+    with open(script_path, 'w') as fil:
+        fil.write(script)
+
+    run_command('submit '
+                '--name test-cli-submit-and-status '
+                '--environment %s '
+                '--worker-count 0 '
+                '--scheduler-memory 256MiB '
+                '--scheduler-vcores 1 '
+                '--client-memory 128MiB '
+                '--client-vcores 1 '
+                '%s a b c' % (conda_env, script_path))
+    out, err = capfd.readouterr()
+    # Logs go to err
+    assert 'INFO' in err
+    app_id = out.strip()
+    assert '\n' not in app_id
+
+    with ensure_shutdown(skein_client, app_id, status='SUCCEEDED'):
+        # Wait for app to start
+        skein_client.connect(app_id)
+        wait_for_completion(skein_client, app_id, timeout=60)
+
+    logs = get_logs(app_id)
+    assert 'Done!' in logs
+
+
 def test_cli_kill(tmpdir, conda_env, skein_client, capfd):
     script_path = str(tmpdir.join('script.py'))
     with open(script_path, 'w') as fil:
