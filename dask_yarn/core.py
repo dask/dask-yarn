@@ -306,16 +306,20 @@ class YarnCluster(object):
         self._dask_client_ref = weakref.ref(client)
         return client
 
-    def shutdown(self, status='SUCCEEDED'):
+    def shutdown(self, status='SUCCEEDED', diagnostics=None):
         """Shutdown the application.
 
         Parameters
         ----------
         status : {'SUCCEEDED', 'FAILED', 'KILLED'}, optional
             The yarn application exit status.
+        diagnostics : str, optional
+            The application exit message, usually used for diagnosing failures.
+            Can be seen in the YARN Web UI for completed applications under
+            "diagnostics". If not provided, a default will be used.
         """
         if self._finalizer is not None and self._finalizer.peek() is not None:
-            self.application_client.shutdown(status=status)
+            self.application_client.shutdown(status=status, diagnostics=diagnostics)
             self._finalizer.detach()  # don't call shutdown later
 
     def close(self, **kwargs):
