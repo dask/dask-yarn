@@ -23,10 +23,13 @@ natively from Python.
     client = Client(cluster)
 
 Dask-Yarn uses `Skein <https://jcrist.github.io/skein/>`__,
-a Pythonic library to manage Yarn services.
+a Pythonic library to create and deploy YARN applications.
 
 Install
 -------
+
+Dask-Yarn is designed to only require installation on an edge node. To install,
+use one of the following methods:
 
 **Install with Conda:**
 
@@ -52,6 +55,7 @@ always be installed from source.
 .. toctree::
     :hidden:
 
+    quickstart.rst
     environments.rst
     configuration.rst
     api.rst
