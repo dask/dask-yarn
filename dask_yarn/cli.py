@@ -35,6 +35,13 @@ class _Formatter(argparse.HelpFormatter):
     def _action_max_length(self, value):
         pass
 
+    def _format_args(self, action, default_metavar):
+        """Format remainder arguments nicer"""
+        get_metavar = self._metavar_formatter(action, default_metavar)
+        if action.nargs == argparse.REMAINDER:
+            return '[%s...]' % get_metavar(1)
+        return super(_Formatter, self)._format_args(action, default_metavar)
+
 
 class _VersionAction(argparse.Action):
     def __init__(self, option_strings, version=None, dest=argparse.SUPPRESS,
@@ -130,6 +137,8 @@ def _parse_submit_kwargs(**kwargs):
 @subcommand(entry_subs,
             'submit', 'Submit a Dask application to a YARN cluster',
             arg("script", help="Path to a python script to run on the client"),
+            arg("args", nargs=argparse.REMAINDER,
+                help="Any additional arguments to forward to `script`"),
             arg("--name", help="The application name"),
             arg("--queue", help="The queue to deploy to"),
             arg("--tags",
@@ -307,15 +316,18 @@ def worker(nthreads=None, memory_limit=None):
 
 @subcommand(services.subs,
             'client', 'Start a Dask client process',
-            arg("script", help="Path to a Python script to run."))
-def client(script):
+            arg("script", help="Path to a Python script to run."),
+            arg("args", nargs=argparse.REMAINDER,
+                help="Any additional arguments to forward to `script`"))
+def client(script, args=None):
     app = skein.ApplicationClient.from_current()
+    args = args or []
 
     if not os.path.exists(script):
         raise ValueError("%r doesn't exist" % script)
 
     try:
-        subprocess.check_call([sys.executable, script])
+        subprocess.check_call([sys.executable, script] + args)
         succeeded = True
         retcode = 0
     except subprocess.CalledProcessError as exc:
