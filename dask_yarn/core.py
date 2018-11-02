@@ -131,49 +131,9 @@ def _make_submit_specification(script, **kwargs):
                                   script_name: script},
                            env=client_env,
                            commands=['source environment/bin/activate',
-                                     'python %s' % script_name])
+                                     'dask-yarn client %s' % script_name])
     spec.services['dask.client'] = client
     return spec
-
-
-class _GlobalExitHandler(object):
-    """A global handler to catch and record the reason for an application
-    shutting down, to be used in an atexit hook."""
-    def __init__(self):
-        self.exit_code = None
-        self.exception = None
-
-    def register(self):
-        self._old_exit, sys.exit = sys.exit, self.exit
-        self._old_excepthook, sys.excepthook = sys.excepthook, self.excepthook
-
-    def exit(self, code=0):
-        self.exit_code = code
-        self._old_exit(code)
-
-    def excepthook(self, exc_type, exc, *args):
-        self.exception = exc
-        self._old_excepthook(exc_type, exc, *args)
-
-    @property
-    def succeeded(self):
-        return (self.exception is None and
-                (self.exit_code is None or self.exit_code == 0))
-
-
-_EXIT_HANDLER = _GlobalExitHandler()
-
-
-def _shutdown_on_exit_handler(app):
-    if _EXIT_HANDLER.succeeded:
-        app.shutdown()
-    else:
-        app.shutdown('FAILED')
-
-
-def _shutdown_on_exit_finalizer(app):
-    _EXIT_HANDLER.register()
-    return weakref.finalize(app, _shutdown_on_exit_handler, app)
 
 
 class YarnCluster(object):
@@ -285,14 +245,8 @@ class YarnCluster(object):
         self.scheduler_address = scheduler_address
 
     @classmethod
-    def from_current(cls, shutdown_on_exit=True):
+    def from_current(cls):
         """Connect to an existing ``YarnCluster`` from inside the cluster.
-
-        Parameters
-        ----------
-        shutdown_on_exit : bool
-            If True (default), the cluster will shutdown when this process
-            exits.  Set to False to have the cluster persist.
 
         Returns
         -------
@@ -301,15 +255,6 @@ class YarnCluster(object):
         self = super(YarnCluster, cls).__new__(cls)
         app = skein.ApplicationClient.from_current()
         self._connect_existing(app)
-
-        # If we want to shutdown on exit, create a finalizer to the app itself.
-        # This will never be called automatically by GC due to reference
-        # cycles, but will still be called atexit if it wasn't already detached
-        # by calling `shutdown` before then.
-        self._finalizer = (_shutdown_on_exit_finalizer(app)
-                           if shutdown_on_exit
-                           else None)
-
         return self
 
     @classmethod
@@ -344,6 +289,7 @@ class YarnCluster(object):
         self.app_id = app.id
         self.application_client = app
         self.scheduler_address = scheduler_address
+        self._finalizer = None
 
     def __repr__(self):
         return 'YarnCluster<%r>' % self.scheduler_address

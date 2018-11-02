@@ -1,6 +1,8 @@
 from __future__ import print_function, division, absolute_import
 
 import argparse
+import os
+import subprocess
 import sys
 
 import skein
@@ -189,6 +191,29 @@ def worker(nthreads=None, memory_limit=None):
         loop.run_sync(run)
     except (KeyboardInterrupt, TimeoutError):
         pass
+
+
+@subcommand(entry_subs,
+            'client', 'Start a Dask client',
+            arg("script", help="Path to a Python script to run."))
+def client(script):
+    app = skein.ApplicationClient.from_current()
+
+    if not os.path.exists(script):
+        raise ValueError("%r doesn't exist" % script)
+
+    try:
+        subprocess.check_call([sys.executable, script])
+        succeeded = True
+    except subprocess.CalledProcessError:
+        succeeded = False
+
+    if succeeded:
+        app.shutdown("SUCCEEDED")
+    else:
+        app.shutdown("FAILED",
+                     "Exception in submitted dask application, "
+                     "see logs for more details")
 
 
 def _parse_env(service, env):

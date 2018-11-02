@@ -20,6 +20,7 @@ def run_command(command, error=False):
                          ['',
                           'scheduler',
                           'worker',
+                          'client',
                           'submit',
                           'status',
                           'kill'])
