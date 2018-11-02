@@ -58,5 +58,6 @@ always be installed from source.
     quickstart.rst
     environments.rst
     configuration.rst
+    submit.rst
     api.rst
     cli.rst
