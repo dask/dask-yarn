@@ -239,5 +239,6 @@ def test_make_submit_specification():
 
 
 def test_environment_relative_paths(conda_env):
-    assert (_make_specification(environment=conda_env).to_dict() ==
-            _make_specification(environment=os.path.relpath(conda_env)).to_dict())
+    a = _make_specification(environment=conda_env).to_dict()
+    b = _make_specification(environment=os.path.relpath(conda_env)).to_dict()
+    assert a == b
