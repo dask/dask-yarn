@@ -317,12 +317,16 @@ def client(script):
     try:
         subprocess.check_call([sys.executable, script])
         succeeded = True
-    except subprocess.CalledProcessError:
+        retcode = 0
+    except subprocess.CalledProcessError as exc:
         succeeded = False
+        retcode = exc.returncode
 
     if succeeded:
         app.shutdown("SUCCEEDED")
     else:
+        print("User submitted application %s failed with returncode "
+              "%d, shutting down." % (script, retcode))
         app.shutdown("FAILED",
                      "Exception in submitted dask application, "
                      "see logs for more details")

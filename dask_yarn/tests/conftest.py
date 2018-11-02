@@ -37,9 +37,9 @@ def check_is_shutdown(client, app_id, status='SUCCEEDED'):
         logs = get_logs(app_id)
         print('Expected application to terminate with status==%s, got status==%s\n'
               '\n'
-              'Application Logs:\n'
-              '--------------------------------------------------------------------'
-              '%s', status, report.final_status, logs)
+              'Application Logs\n'
+              '----------------\n'
+              '%s' % (status, report.final_status, logs))
         assert report.final_status == status
 
 
@@ -52,10 +52,11 @@ def ensure_shutdown(client, app_id, status=None):
         raise
     else:
         try:
-            check_is_shutdown(client, app_id, status=status)
+            final_status = wait_for_completion(client, app_id, timeout=5)
         except AssertionError:
             client.kill_application(app_id)
             raise
+        assert final_status == status
 
 
 def wait_for_completion(client, app_id, timeout=30):

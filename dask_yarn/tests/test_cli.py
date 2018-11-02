@@ -130,7 +130,7 @@ def test_cli_submit_and_status(script_kind, final_status, searchtxt,
 
 
 def test_cli_kill(tmpdir, conda_env, skein_client, capfd):
-    script_path = tmpdir.join('script.py')
+    script_path = str(tmpdir.join('script.py'))
     with open(script_path, 'w') as fil:
         fil.write(GOOD_TEST_SCRIPT)
 
