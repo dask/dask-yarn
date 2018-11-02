@@ -18,12 +18,13 @@ def run_command(command, error=False):
 
 @pytest.mark.parametrize('command',
                          ['',
-                          'scheduler',
-                          'worker',
-                          'client',
                           'submit',
                           'status',
-                          'kill'])
+                          'kill',
+                          'services',
+                          'services scheduler',
+                          'services worker',
+                          'services client'])
 def test_cli_help(command, capfd):
     run_command(command + ' -h')
 
@@ -32,7 +33,7 @@ def test_cli_help(command, capfd):
     assert 'usage: dask-yarn' in out
 
 
-@pytest.mark.parametrize('group', [''])
+@pytest.mark.parametrize('group', ['', 'services'])
 def test_cli_call_command_group(group, capfd):
     run_command(group, error=True)
 

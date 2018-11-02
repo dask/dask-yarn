@@ -101,121 +101,6 @@ entry_subs = entry.add_subparsers(metavar='command', dest='command')
 entry_subs.required = True
 
 
-@subcommand(entry_subs,
-            'scheduler', 'Start a Dask scheduler')
-def scheduler():
-    app_client = skein.ApplicationClient.from_current()
-
-    enable_proctitle_on_current()
-    enable_proctitle_on_children()
-
-    if sys.platform.startswith('linux'):
-        import resource   # module fails importing on Windows
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        limit = max(soft, hard // 2)
-        resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
-
-    addr = uri_from_host_port('', None, 0)
-
-    loop = IOLoop.current()
-
-    services = {}
-    bokeh = False
-    with ignoring(ImportError):
-        from distributed.bokeh.scheduler import BokehScheduler
-        services[('bokeh', 0)] = (BokehScheduler, {})
-        bokeh = True
-
-    scheduler = Scheduler(loop=loop, services=services)
-    scheduler.start(addr)
-
-    install_signal_handlers(loop)
-
-    app_client.kv['dask.scheduler'] = scheduler.address.encode()
-
-    if bokeh:
-        bokeh_port = scheduler.services['bokeh'].port
-        bokeh_host = urlparse(scheduler.address).hostname
-        bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
-
-        app_client.kv['dask.dashboard'] = bokeh_address.encode()
-
-    try:
-        loop.start()
-        loop.close()
-    finally:
-        scheduler.stop()
-
-
-@subcommand(entry_subs,
-            'worker', 'Start a Dask worker',
-            arg("--nthreads", type=int,
-                help=("Number of threads. Defaults to number of vcores in "
-                      "container")),
-            arg("--memory_limit", type=str,
-                help=("Maximum memory available to the worker. This can be an "
-                      "integer (in bytes), a string (like '5 GiB' or '500 "
-                      "MiB'), or 0 (no memory management). Defaults to the "
-                      "container memory limit.")))
-def worker(nthreads=None, memory_limit=None):
-    enable_proctitle_on_current()
-    enable_proctitle_on_children()
-
-    if memory_limit is None:
-        memory_limit = int(skein.properties.container_resources.memory * 2**20)
-    if nthreads is None:
-        nthreads = skein.properties.container_resources.vcores
-
-    app_client = skein.ApplicationClient.from_current()
-
-    scheduler = app_client.kv.wait('dask.scheduler').decode()
-
-    loop = IOLoop.current()
-
-    worker = Nanny(scheduler, ncores=nthreads, loop=loop,
-                   memory_limit=memory_limit, worker_port=0)
-
-    @gen.coroutine
-    def close(signalnum):
-        worker._close(timeout=2)
-
-    install_signal_handlers(loop, cleanup=close)
-
-    @gen.coroutine
-    def run():
-        yield worker._start(None)
-        while worker.status != 'closed':
-            yield gen.sleep(0.2)
-
-    try:
-        loop.run_sync(run)
-    except (KeyboardInterrupt, TimeoutError):
-        pass
-
-
-@subcommand(entry_subs,
-            'client', 'Start a Dask client',
-            arg("script", help="Path to a Python script to run."))
-def client(script):
-    app = skein.ApplicationClient.from_current()
-
-    if not os.path.exists(script):
-        raise ValueError("%r doesn't exist" % script)
-
-    try:
-        subprocess.check_call([sys.executable, script])
-        succeeded = True
-    except subprocess.CalledProcessError:
-        succeeded = False
-
-    if succeeded:
-        app.shutdown("SUCCEEDED")
-    else:
-        app.shutdown("FAILED",
-                     "Exception in submitted dask application, "
-                     "see logs for more details")
-
-
 def _parse_env(service, env):
     out = {}
     if env is None:
@@ -323,6 +208,124 @@ def status(app_id):
             app_id)
 def kill(app_id):
     skein.Client().kill_application(app_id)
+
+
+services = node(entry_subs, 'services', 'Manage Dask services')
+
+
+@subcommand(services.subs,
+            'scheduler', 'Start a Dask scheduler process')
+def scheduler():
+    app_client = skein.ApplicationClient.from_current()
+
+    enable_proctitle_on_current()
+    enable_proctitle_on_children()
+
+    if sys.platform.startswith('linux'):
+        import resource   # module fails importing on Windows
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        limit = max(soft, hard // 2)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
+
+    addr = uri_from_host_port('', None, 0)
+
+    loop = IOLoop.current()
+
+    services = {}
+    bokeh = False
+    with ignoring(ImportError):
+        from distributed.bokeh.scheduler import BokehScheduler
+        services[('bokeh', 0)] = (BokehScheduler, {})
+        bokeh = True
+
+    scheduler = Scheduler(loop=loop, services=services)
+    scheduler.start(addr)
+
+    install_signal_handlers(loop)
+
+    app_client.kv['dask.scheduler'] = scheduler.address.encode()
+
+    if bokeh:
+        bokeh_port = scheduler.services['bokeh'].port
+        bokeh_host = urlparse(scheduler.address).hostname
+        bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
+
+        app_client.kv['dask.dashboard'] = bokeh_address.encode()
+
+    try:
+        loop.start()
+        loop.close()
+    finally:
+        scheduler.stop()
+
+
+@subcommand(services.subs,
+            'worker', 'Start a Dask worker process',
+            arg("--nthreads", type=int,
+                help=("Number of threads. Defaults to number of vcores in "
+                      "container")),
+            arg("--memory_limit", type=str,
+                help=("Maximum memory available to the worker. This can be an "
+                      "integer (in bytes), a string (like '5 GiB' or '500 "
+                      "MiB'), or 0 (no memory management). Defaults to the "
+                      "container memory limit.")))
+def worker(nthreads=None, memory_limit=None):
+    enable_proctitle_on_current()
+    enable_proctitle_on_children()
+
+    if memory_limit is None:
+        memory_limit = int(skein.properties.container_resources.memory * 2**20)
+    if nthreads is None:
+        nthreads = skein.properties.container_resources.vcores
+
+    app_client = skein.ApplicationClient.from_current()
+
+    scheduler = app_client.kv.wait('dask.scheduler').decode()
+
+    loop = IOLoop.current()
+
+    worker = Nanny(scheduler, ncores=nthreads, loop=loop,
+                   memory_limit=memory_limit, worker_port=0)
+
+    @gen.coroutine
+    def close(signalnum):
+        worker._close(timeout=2)
+
+    install_signal_handlers(loop, cleanup=close)
+
+    @gen.coroutine
+    def run():
+        yield worker._start(None)
+        while worker.status != 'closed':
+            yield gen.sleep(0.2)
+
+    try:
+        loop.run_sync(run)
+    except (KeyboardInterrupt, TimeoutError):
+        pass
+
+
+@subcommand(services.subs,
+            'client', 'Start a Dask client process',
+            arg("script", help="Path to a Python script to run."))
+def client(script):
+    app = skein.ApplicationClient.from_current()
+
+    if not os.path.exists(script):
+        raise ValueError("%r doesn't exist" % script)
+
+    try:
+        subprocess.check_call([sys.executable, script])
+        succeeded = True
+    except subprocess.CalledProcessError:
+        succeeded = False
+
+    if succeeded:
+        app.shutdown("SUCCEEDED")
+    else:
+        app.shutdown("FAILED",
+                     "Exception in submitted dask application, "
+                     "see logs for more details")
 
 
 def main(args=None):
