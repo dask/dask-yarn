@@ -8,8 +8,6 @@ conda create -n test-environment \
     dask \
     distributed \
     flake8 \
-    protobuf \
-    grpcio \
     nomkl \
     pytest \
     python=$1 \
@@ -17,8 +15,7 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install conda-pack 
-pip install --no-deps grpcio-tools
+pip install conda-pack grpcio protobuf grpcio-tools
 
 if [[ $1 == '2.7' ]]; then
     pip install backports.weakref

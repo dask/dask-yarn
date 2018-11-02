@@ -1,9 +1,12 @@
 from __future__ import print_function, division, absolute_import
 
 import argparse
+import os
+import subprocess
 import sys
 
 import skein
+from skein.utils import format_table, humanize_timedelta
 from tornado import gen
 from tornado.ioloop import IOLoop, TimeoutError
 from distributed import Scheduler, Nanny
@@ -18,6 +21,7 @@ else:
     from urlparse import urlparse
 
 from . import __version__
+from .core import _make_submit_specification
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -97,8 +101,120 @@ entry_subs = entry.add_subparsers(metavar='command', dest='command')
 entry_subs.required = True
 
 
+def _parse_env(service, env):
+    out = {}
+    if env is None:
+        return out
+    for item in env:
+        elements = item.split('=')
+        if len(elements) != 2:
+            raise ValueError("Invalid parameter to --%s-env: %r" % (service, env))
+        key, val = elements
+        out[key.strip()] = val.strip()
+    return out
+
+
+# Exposed for testing
+def _parse_submit_kwargs(**kwargs):
+    if kwargs.get('worker_env'):
+        kwargs['worker_env'] = _parse_env('worker', kwargs['worker_env'])
+    if kwargs.get('client_env'):
+        kwargs['client_env'] = _parse_env('client', kwargs['client_env'])
+    if kwargs.get('tags'):
+        kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
+    if kwargs.get('worker_count') is not None:
+        kwargs['n_workers'] = kwargs.pop('worker_count')
+    return kwargs
+
+
 @subcommand(entry_subs,
-            'scheduler', 'Start a Dask scheduler on YARN')
+            'submit', 'Submit a Dask application to a YARN cluster',
+            arg("script", help="Path to a python script to run on the client"),
+            arg("--name", help="The application name"),
+            arg("--queue", help="The queue to deploy to"),
+            arg("--tags",
+                help=("A comma-separated list of strings to use as "
+                      "tags for this application.")),
+            arg("--environment",
+                help=("Path to an archived Python environment (either "
+                      "``tar.gz`` or ``zip``).")),
+            arg("--worker-count", type=int,
+                help="The number of workers to initially start."),
+            arg("--worker-vcores", type=int,
+                help="The number of virtual cores to allocate per worker."),
+            arg("--worker-memory", type=str,
+                help=("The amount of memory to allocate per worker. Accepts a "
+                      "unit suffix (e.g. '2 GiB' or '4096 MiB'). Will be "
+                      "rounded up to the nearest MiB.")),
+            arg("--worker-restarts", type=int,
+                help=("The maximum number of worker restarts to allow before "
+                      "failing the application. Default is unlimited.")),
+            arg("--worker-env", type=str, action='append',
+                help=("Environment variables to set on the workers. Pass a "
+                      "key-value pair like ``--worker-env key=val``. May "
+                      "be used more than once.")),
+            arg("--client-vcores", type=int,
+                help="The number of virtual cores to allocate for the client."),
+            arg("--client-memory", type=str,
+                help=("The amount of memory to allocate for the client. "
+                      "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
+                      "Will be rounded up to the nearest MiB.")),
+            arg("--client-env", type=str, action='append',
+                help=("Environment variables to set on the client. Pass a "
+                      "key-value pair like ``--client-env key=val``. May "
+                      "be used more than once.")),
+            arg("--scheduler-vcores", type=int,
+                help="The number of virtual cores to allocate for the scheduler."),
+            arg("--scheduler-memory", type=str,
+                help=("The amount of memory to allocate for the scheduler. "
+                      "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
+                      "Will be rounded up to the nearest MiB.")))
+def submit(script, **kwargs):
+    kwargs = _parse_submit_kwargs(**kwargs)
+    spec = _make_submit_specification(script, **kwargs)
+    app_id = skein.Client().submit(spec)
+    print(app_id)
+
+
+app_id = arg('app_id', help='The application id', metavar='APP_ID')
+
+
+@subcommand(entry_subs,
+            'status', 'Check the status of a submitted Dask application',
+            app_id)
+def status(app_id):
+    report = skein.Client().application_report(app_id)
+    header = ['application_id',
+              'name',
+              'state',
+              'status',
+              'containers',
+              'vcores',
+              'memory',
+              'runtime']
+    data = [(report.id,
+             report.name,
+             report.state,
+             report.final_status,
+             report.usage.num_used_containers,
+             report.usage.used_resources.vcores,
+             report.usage.used_resources.memory,
+             humanize_timedelta(report.runtime))]
+    print(format_table(header, data))
+
+
+@subcommand(entry_subs,
+            'kill', 'Kill a Dask application',
+            app_id)
+def kill(app_id):
+    skein.Client().kill_application(app_id)
+
+
+services = node(entry_subs, 'services', 'Manage Dask services')
+
+
+@subcommand(services.subs,
+            'scheduler', 'Start a Dask scheduler process')
 def scheduler():
     app_client = skein.ApplicationClient.from_current()
 
@@ -143,8 +259,8 @@ def scheduler():
         scheduler.stop()
 
 
-@subcommand(entry_subs,
-            'worker', 'Start a Dask worker on YARN',
+@subcommand(services.subs,
+            'worker', 'Start a Dask worker process',
             arg("--nthreads", type=int,
                 help=("Number of threads. Defaults to number of vcores in "
                       "container")),
@@ -187,6 +303,33 @@ def worker(nthreads=None, memory_limit=None):
         loop.run_sync(run)
     except (KeyboardInterrupt, TimeoutError):
         pass
+
+
+@subcommand(services.subs,
+            'client', 'Start a Dask client process',
+            arg("script", help="Path to a Python script to run."))
+def client(script):
+    app = skein.ApplicationClient.from_current()
+
+    if not os.path.exists(script):
+        raise ValueError("%r doesn't exist" % script)
+
+    try:
+        subprocess.check_call([sys.executable, script])
+        succeeded = True
+        retcode = 0
+    except subprocess.CalledProcessError as exc:
+        succeeded = False
+        retcode = exc.returncode
+
+    if succeeded:
+        app.shutdown("SUCCEEDED")
+    else:
+        print("User submitted application %s failed with returncode "
+              "%d, shutting down." % (script, retcode))
+        app.shutdown("FAILED",
+                     "Exception in submitted dask application, "
+                     "see logs for more details")
 
 
 def main(args=None):
