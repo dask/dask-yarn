@@ -163,6 +163,40 @@ def test_cli_submit_with_args(tmpdir, conda_env, skein_client, capfd):
     assert 'Done!' in logs
 
 
+@pytest.mark.parametrize('script_kind, final_status, searchtxt',
+                         [('good', 'SUCCEEDED', 'Done!'),
+                          ('bad', 'FAILED', 'Failed!')])
+def test_cli_submit_local(script_kind, final_status, searchtxt,
+                          tmpdir, conda_env, skein_client, capfd):
+    if script_kind == 'good':
+        error = False
+        script = GOOD_TEST_SCRIPT
+    else:
+        error = True
+        script = BAD_TEST_SCRIPT
+
+    script_path = str(tmpdir.join('script.py'))
+    with open(script_path, 'w') as fil:
+        fil.write(script)
+
+    run_command('submit '
+                '--name test-cli-submit-and-status '
+                '--environment %s '
+                '--deploy-mode local '
+                '--worker-count 1 '
+                '--worker-memory 256MiB '
+                '--worker-vcores 1 '
+                '--scheduler-memory 256MiB '
+                '--scheduler-vcores 1 '
+                '--client-memory 128MiB '
+                '--client-vcores 1 '
+                '%s' % (conda_env, script_path), error=error)
+    out, err = capfd.readouterr()
+    # Logs go to err
+    assert 'INFO' in err
+    assert searchtxt in out or searchtxt in err
+
+
 def test_cli_kill(tmpdir, conda_env, skein_client, capfd):
     script_path = str(tmpdir.join('script.py'))
     with open(script_path, 'w') as fil:

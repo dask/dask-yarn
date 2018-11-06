@@ -10,9 +10,9 @@ import pytest
 
 @pytest.fixture(scope='session')
 def conda_env():
-    conda_pack = pytest.importorskip('conda_pack')
     envpath = 'dask-yarn-py%d%d.tar.gz' % sys.version_info[:2]
     if not os.path.exists(envpath):
+        conda_pack = pytest.importorskip('conda_pack')
         conda_pack.pack(output=envpath, verbose=True)
     return envpath
 

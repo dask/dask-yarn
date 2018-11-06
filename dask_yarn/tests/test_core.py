@@ -8,20 +8,32 @@ import dask
 from dask.distributed import Client
 from distributed.utils_test import inc
 import pytest
+import skein
 
 from dask_yarn import YarnCluster
 from dask_yarn.core import _make_specification, _make_submit_specification
 from .conftest import check_is_shutdown
 
+try:
+    import bokeh  # noqa
+    bokeh_installed = True
+except Exception:
+    bokeh_installed = False
 
-def test_basic(skein_client, conda_env):
+
+@pytest.mark.parametrize('deploy_mode', ['remote', 'local'])
+def test_basic(deploy_mode, skein_client, conda_env):
     with YarnCluster(environment=conda_env,
+                     deploy_mode=deploy_mode,
                      worker_memory='512 MiB',
                      scheduler_memory='512 MiB',
                      name='test-basic',
                      skein_client=skein_client) as cluster:
         # Smoketest repr
         repr(cluster)
+
+        if bokeh_installed:
+            assert cluster.dashboard_link is not None
 
         # Scale up
         cluster.scale(2)
@@ -62,6 +74,24 @@ def test_from_specification(skein_client, conda_env, tmpdir):
             pass
 
     check_is_shutdown(skein_client, cluster.app_id)
+
+
+def test_from_specification_errors():
+    bad_spec = skein.ApplicationSpec.from_yaml("""
+        name: bad_spec
+        services:
+          bad:
+            resources:
+              memory: 1 GiB
+              vcores: 1
+            commands:
+              - exit 1
+        """)
+    with pytest.raises(ValueError):
+        YarnCluster.from_specification(bad_spec)
+
+    with pytest.raises(TypeError):
+        YarnCluster.from_specification(object())
 
 
 def test_from_application_id(skein_client, conda_env):
@@ -198,6 +228,10 @@ def test_make_specification_errors():
         assert 'conda-pack' in str(info.value)
 
     with pytest.raises(ValueError) as info:
+        _make_specification(environment='foo.tar.gz', deploy_mode='unknown')
+    assert 'deploy_mode' in str(info.value)
+
+    with pytest.raises(ValueError) as info:
         _make_specification(environment='foo.tar.gz', worker_memory=1234)
     assert '1234 MiB' in str(info.value)
 
@@ -206,19 +240,26 @@ def test_make_specification_errors():
     assert '1234 MiB' in str(info.value)
 
 
-def test_make_submit_specification():
+@pytest.mark.parametrize('deploy_mode', ['local', 'remote'])
+def test_make_submit_specification(deploy_mode):
     spec = _make_submit_specification('../script.py',
+                                      deploy_mode=deploy_mode,
                                       environment='myenv.tar.gz',
                                       name='test-name',
                                       client_vcores=2,
                                       client_memory='2 GiB')
 
-    client = spec.services['dask.client']
-    scheduler = spec.services['dask.scheduler']
-    assert client.files['environment'] == scheduler.files['environment']
-    assert client.files['script.py'].source.startswith('file:///')
-    assert client.resources.memory == 2048
-    assert client.resources.vcores == 2
+    assert spec.name == 'test-name'
+    if deploy_mode == 'local':
+        assert set(spec.services) == {'dask.worker'}
+        assert 'environment' in spec.services['dask.worker'].files
+    else:
+        client = spec.services['dask.client']
+        scheduler = spec.services['dask.scheduler']
+        assert client.files['environment'] == scheduler.files['environment']
+        assert client.files['script.py'].source.startswith('file:///')
+        assert client.resources.memory == 2048
+        assert client.resources.vcores == 2
 
     config = {
         'yarn.name': 'dask-yarn-tests',
@@ -230,12 +271,13 @@ def test_make_submit_specification():
     }
 
     with dask.config.set(config):
-        spec = _make_submit_specification('script.py')
+        spec = _make_submit_specification('script.py', deploy_mode=deploy_mode)
         assert spec.name == 'dask-yarn-tests'
         assert spec.queue == 'myqueue'
-        assert spec.services['dask.client'].resources.memory == 1234
-        assert spec.services['dask.client'].resources.vcores == 2
-        assert spec.services['dask.client'].env == {'foo': 'bar'}
+        if deploy_mode == 'remote':
+            assert spec.services['dask.client'].resources.memory == 1234
+            assert spec.services['dask.client'].resources.vcores == 2
+            assert spec.services['dask.client'].env == {'foo': 'bar'}
 
 
 def test_environment_relative_paths(conda_env):

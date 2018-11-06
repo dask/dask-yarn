@@ -3,3 +3,4 @@ include = */dask_yarn/*
 omit =
     dask_yarn/_version.py
     dask_yarn/tests/*.py
+    dask_yarn/compat.py
