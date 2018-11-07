@@ -17,7 +17,7 @@ from distributed.proctitle import (enable_proctitle_on_children,
 
 from . import __version__
 from .compat import urlparse
-from .core import _make_submit_specification, YarnCluster
+from .core import _make_submit_specification, YarnCluster, _get_skein_client
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -185,7 +185,7 @@ def submit(script, args=None, **kwargs):
 
     if 'dask.scheduler' in spec.services:
         # deploy_mode == 'remote'
-        app_id = skein.Client().submit(spec)
+        app_id = _get_skein_client().submit(spec)
         print(app_id)
     else:
         # deploy_mode == 'local'
@@ -215,7 +215,7 @@ app_id = arg('app_id', help='The application id', metavar='APP_ID')
             'status', 'Check the status of a submitted Dask application',
             app_id)
 def status(app_id):
-    report = skein.Client().application_report(app_id)
+    report = _get_skein_client().application_report(app_id)
     header = ['application_id',
               'name',
               'state',
@@ -239,7 +239,7 @@ def status(app_id):
             'kill', 'Kill a Dask application',
             app_id)
 def kill(app_id):
-    skein.Client().kill_application(app_id)
+    _get_skein_client().kill_application(app_id)
 
 
 services = node(entry_subs, 'services', 'Manage Dask services')
