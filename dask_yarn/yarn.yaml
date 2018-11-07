@@ -6,7 +6,6 @@ yarn:
   name: dask                 # Application name
   queue: default             # Yarn queue to deploy to
   environment: null          # Path to conda packed environment
-  deploy-mode: remote        # Deploy mode to use. One of {remote, local}.
   tags: []                   # List of strings to tag applications
 
   scheduler:                 # Specifications of scheduler container
