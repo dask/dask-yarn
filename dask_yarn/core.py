@@ -2,18 +2,15 @@ from __future__ import absolute_import, print_function, division
 
 import math
 import os
-import sys
 
 import dask
-from dask.distributed import get_client
+from dask.distributed import get_client, LocalCluster
 from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
 import skein
+from skein.utils import cached_property
 
-if sys.version_info.major == 2:
-    from backports import weakref
-else:
-    import weakref
+from .compat import weakref, urlparse
 
 
 _memory_error = """Memory specification for the `{0}` take string parameters
@@ -38,6 +35,12 @@ def lookup(kwargs, a, b):
     return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
 
 
+def _maybe_start_client(skein_client):
+    if skein_client is None:
+        return skein.Client()
+    return skein_client
+
+
 # exposed for testing only
 
 def _make_specification(**kwargs):
@@ -47,28 +50,24 @@ def _make_specification(**kwargs):
     scheduler in a YARN container. See the docstring for ``YarnCluster`` for
     more details.
     """
-    if not kwargs and dask.config.get('yarn.specification'):
+    if (all(v is None for v in kwargs.values()) and
+            dask.config.get('yarn.specification')):
         # No overrides and full specification in configuration
         spec = dask.config.get('yarn.specification')
         if isinstance(spec, dict):
             return skein.ApplicationSpec.from_dict(spec)
         return skein.ApplicationSpec.from_file(spec)
 
+    deploy_mode = kwargs.get('deploy_mode') or 'remote'
+    if deploy_mode not in {'remote', 'local'}:
+        raise ValueError("`deploy_mode` must be one of {'remote', 'local'}, "
+                         "got %r" % deploy_mode)
+
     name = lookup(kwargs, 'name', 'yarn.name')
     queue = lookup(kwargs, 'queue', 'yarn.queue')
     tags = lookup(kwargs, 'tags', 'yarn.tags')
 
     environment = lookup(kwargs, 'environment', 'yarn.environment')
-
-    n_workers = lookup(kwargs, 'n_workers', 'yarn.worker.count')
-    worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
-    worker_memory = lookup(kwargs, 'worker_memory', 'yarn.worker.memory')
-    worker_restarts = lookup(kwargs, 'worker_restarts', 'yarn.worker.restarts')
-    worker_env = lookup(kwargs, 'worker_env', 'yarn.worker.env')
-
-    scheduler_vcores = lookup(kwargs, 'scheduler_vcores', 'yarn.scheduler.vcores')
-    scheduler_memory = lookup(kwargs, 'scheduler_memory', 'yarn.scheduler.memory')
-
     if environment is None:
         msg = ("You must provide a path to an archived Python environment for "
                "the workers.\n"
@@ -76,66 +75,86 @@ def _make_specification(**kwargs):
                "See http://yarn.dask.org/environments.html for more information.")
         raise ValueError(msg)
 
-    scheduler_memory = parse_memory(scheduler_memory, 'scheduler')
-    worker_memory = parse_memory(worker_memory, 'worker')
+    n_workers = lookup(kwargs, 'n_workers', 'yarn.worker.count')
+    worker_restarts = lookup(kwargs, 'worker_restarts', 'yarn.worker.restarts')
+    worker_env = lookup(kwargs, 'worker_env', 'yarn.worker.env')
+    worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
+    worker_memory = parse_memory(lookup(kwargs, 'worker_memory', 'yarn.worker.memory'),
+                                 'worker')
 
-    scheduler = skein.Service(instances=1,
-                              resources=skein.Resources(
-                                  vcores=scheduler_vcores,
-                                  memory=scheduler_memory
-                              ),
-                              max_restarts=0,
-                              files={'environment': environment},
-                              commands=['source environment/bin/activate',
-                                        'dask-yarn services scheduler'])
+    services = {}
 
-    worker = skein.Service(instances=n_workers,
-                           resources=skein.Resources(
-                               vcores=worker_vcores,
-                               memory=worker_memory
-                           ),
-                           max_restarts=worker_restarts,
-                           depends=['dask.scheduler'],
-                           files={'environment': environment},
-                           env=worker_env,
-                           commands=['source environment/bin/activate',
-                                     'dask-yarn services worker'])
+    if deploy_mode == 'remote':
+        scheduler_vcores = lookup(kwargs, 'scheduler_vcores',
+                                  'yarn.scheduler.vcores')
+        scheduler_memory = parse_memory(lookup(kwargs, 'scheduler_memory',
+                                               'yarn.scheduler.memory'),
+                                        'scheduler')
+
+        services['dask.scheduler'] = skein.Service(
+            instances=1,
+            resources=skein.Resources(
+                vcores=scheduler_vcores,
+                memory=scheduler_memory
+            ),
+            max_restarts=0,
+            files={'environment': environment},
+            commands=['source environment/bin/activate',
+                      'dask-yarn services scheduler']
+        )
+        worker_depends = ['dask.scheduler']
+    else:
+        worker_depends = None
+
+    services['dask.worker'] = skein.Service(
+        instances=n_workers,
+        resources=skein.Resources(
+            vcores=worker_vcores,
+            memory=worker_memory
+        ),
+        max_restarts=worker_restarts,
+        depends=worker_depends,
+        files={'environment': environment},
+        env=worker_env,
+        commands=['source environment/bin/activate',
+                  'dask-yarn services worker']
+    )
 
     spec = skein.ApplicationSpec(name=name,
                                  queue=queue,
                                  tags=tags,
-                                 services={'dask.scheduler': scheduler,
-                                           'dask.worker': worker})
+                                 services=services)
     return spec
 
 
 def _make_submit_specification(script, args=(), **kwargs):
-    client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
-    client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
-    client_env = lookup(kwargs, 'client_env', 'yarn.client.env')
-    client_memory = parse_memory(client_memory, 'client')
-
     spec = _make_specification(**kwargs)
-    environment = spec.services['dask.worker'].files['environment']
 
-    script_name = os.path.basename(script)
+    if 'dask.scheduler' in spec.services:
+        # deploy_mode == 'remote'
+        client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
+        client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
+        client_env = lookup(kwargs, 'client_env', 'yarn.client.env')
+        client_memory = parse_memory(client_memory, 'client')
+        environment = spec.services['dask.worker'].files['environment']
+        script_name = os.path.basename(script)
 
-    spec.services['dask.client'] = skein.Service(
-        instances=1,
-        resources=skein.Resources(
-            vcores=client_vcores,
-            memory=client_memory
-        ),
-        max_restarts=0,
-        depends=['dask.scheduler'],
-        files={'environment': environment,
-               script_name: script},
-        env=client_env,
-        commands=[
-            'source environment/bin/activate',
-            'dask-yarn services client %s %s' % (script_name, ' '.join(args))
-        ]
-    )
+        spec.services['dask.client'] = skein.Service(
+            instances=1,
+            resources=skein.Resources(
+                vcores=client_vcores,
+                memory=client_memory
+            ),
+            max_restarts=0,
+            depends=['dask.scheduler'],
+            files={'environment': environment,
+                   script_name: script},
+            env=client_env,
+            commands=[
+                'source environment/bin/activate',
+                'dask-yarn services client %s %s' % (script_name, ' '.join(args))
+            ]
+        )
     return spec
 
 
@@ -169,6 +188,10 @@ class YarnCluster(object):
         The amount of memory to allocate to the scheduler. Accepts a unit
         suffix (e.g. '2 GiB' or '4096 MiB'). Will be rounded up to the nearest
         MiB.
+    deploy_mode : {'remote', 'local'}, optional
+        The deploy mode to use. If ``'remote'``, the scheduler will be deployed
+        in a YARN container. If ``'local'``, the scheduler will run locally,
+        which can be nice for debugging. Default is ``'remote'``.
     name : str, optional
         The application name.
     queue : str, optional
@@ -192,6 +215,7 @@ class YarnCluster(object):
                  worker_env=None,
                  scheduler_vcores=None,
                  scheduler_memory=None,
+                 deploy_mode=None,
                  name=None,
                  queue=None,
                  tags=None,
@@ -205,11 +229,23 @@ class YarnCluster(object):
                                    worker_env=worker_env,
                                    scheduler_vcores=scheduler_vcores,
                                    scheduler_memory=scheduler_memory,
+                                   deploy_mode=deploy_mode,
                                    name=name,
                                    queue=queue,
                                    tags=tags)
 
         self._start_cluster(spec, skein_client)
+
+    @cached_property
+    def dashboard_link(self):
+        """Link to the dask dashboard. None if dashboard isn't running"""
+        if self._dashboard_address is None:
+            return None
+        template = dask.config.get('distributed.dashboard.link')
+        dashboard = urlparse(self._dashboard_address)
+        params = dict(os.environ)
+        params.update({'host': dashboard.hostname, 'port': dashboard.port})
+        return template.format(**params)
 
     @classmethod
     def from_specification(cls, spec, skein_client=None):
@@ -218,34 +254,78 @@ class YarnCluster(object):
         Parameters
         ----------
         spec : skein.ApplicationSpec, dict, or filename
-            The application specification to use. Should define at least two
-            services: ``'dask.scheduler'`` and ``'dask.worker'``.
+            The application specification to use. Must define at least one
+            service: ``'dask.worker'``. If no ``'dask.scheduler'`` service is
+            defined, a scheduler will be started locally.
         skein_client : skein.Client, optional
             The ``skein.Client`` to use. If not provided, one will be started.
         """
         self = super(YarnCluster, cls).__new__(cls)
+        if isinstance(spec, dict):
+            spec = skein.ApplicationSpec.from_dict(spec)
+        elif isinstance(spec, str):
+            spec = skein.ApplicationSpec.from_file(spec)
+        elif not isinstance(spec, skein.ApplicationSpec):
+            raise TypeError("spec must be an ApplicationSpec, dict, or path, "
+                            "got %r" % type(spec).__name__)
         self._start_cluster(spec, skein_client)
         return self
 
     def _start_cluster(self, spec, skein_client=None):
         """Start the cluster and initialize state"""
-        if skein_client is None:
-            skein_client = skein.Client()
 
-        app = skein_client.submit_and_connect(spec)
-        try:
-            scheduler_address = app.kv.wait('dask.scheduler').decode()
-        except BaseException:
-            # Failed to connect, kill the application and reraise
-            skein_client.kill_application(app.id)
-            raise
+        if 'dask.worker' not in spec.services:
+            raise ValueError("Provided Skein specification must include a "
+                             "'dask.worker' service")
+
+        skein_client = _maybe_start_client(skein_client)
+
+        if 'dask.scheduler' not in spec.services:
+            # deploy_mode == 'local'
+            self._local_cluster = LocalCluster(n_workers=0,
+                                               ip='0.0.0.0',
+                                               diagnostics_port=('', 0),
+                                               scheduler_port=0)
+            scheduler = self._local_cluster.scheduler
+
+            scheduler_address = scheduler.address
+            try:
+                dashboard_port = scheduler.services['bokeh'].port
+            except KeyError:
+                dashboard_address = None
+            else:
+                dashboard_host = urlparse(scheduler_address).hostname
+                dashboard_address = 'http://%s:%d' % (dashboard_host, dashboard_port)
+
+            app = skein_client.submit_and_connect(spec)
+            try:
+                app.kv['dask.scheduler'] = scheduler_address.encode()
+                if dashboard_address is not None:
+                    app.kv['dask.dashboard'] = dashboard_address.encode()
+            except BaseException:
+                # Failed to connect, kill the application and reraise
+                skein_client.kill_application(app.id)
+                raise
+        else:
+            # deploy_mode == 'remote'
+            app = skein_client.submit_and_connect(spec)
+            try:
+                scheduler_address = app.kv.wait('dask.scheduler').decode()
+                dashboard_address = app.kv.get('dask.dashboard')
+                if dashboard_address is not None:
+                    dashboard_address = dashboard_address.decode()
+            except BaseException:
+                # Failed to connect, kill the application and reraise
+                skein_client.kill_application(app.id)
+                raise
 
         # Ensure application gets cleaned up
         self._finalizer = weakref.finalize(self, app.shutdown)
 
+        self.scheduler_address = scheduler_address
+        self._dashboard_address = dashboard_address
         self.app_id = app.id
         self.application_client = app
-        self.scheduler_address = scheduler_address
 
     @classmethod
     def from_current(cls):
@@ -256,7 +336,12 @@ class YarnCluster(object):
         YarnCluster
         """
         self = super(YarnCluster, cls).__new__(cls)
-        app = skein.ApplicationClient.from_current()
+        app_id = os.environ.get('DASK_APPLICATION_ID', None)
+        app_address = os.environ.get('DASK_APPMASTER_ADDRESS', None)
+        if app_id is not None and app_address is not None:
+            app = skein.ApplicationClient(app_address, app_id)
+        else:
+            app = skein.ApplicationClient.from_current()
         self._connect_existing(app)
         return self
 
@@ -276,8 +361,7 @@ class YarnCluster(object):
         YarnCluster
         """
         self = super(YarnCluster, cls).__new__(cls)
-        if skein_client is None:
-            skein_client = skein.Client()
+        skein_client = _maybe_start_client(skein_client)
         app = skein_client.connect(app_id)
         self._connect_existing(app)
         return self
@@ -288,14 +372,18 @@ class YarnCluster(object):
             raise ValueError("%r is not a valid dask cluster" % app.id)
 
         scheduler_address = app.kv.wait('dask.scheduler').decode()
+        dashboard_address = app.kv.get('dask.dashboard')
+        if dashboard_address is not None:
+            dashboard_address = dashboard_address.decode()
 
         self.app_id = app.id
         self.application_client = app
         self.scheduler_address = scheduler_address
+        self._dashboard_address = dashboard_address
         self._finalizer = None
 
     def __repr__(self):
-        return 'YarnCluster<%r>' % self.scheduler_address
+        return 'YarnCluster<%s>' % self.app_id
 
     def _dask_client(self):
         if hasattr(self, '_dask_client_ref'):
@@ -321,6 +409,10 @@ class YarnCluster(object):
         if self._finalizer is not None and self._finalizer.peek() is not None:
             self.application_client.shutdown(status=status, diagnostics=diagnostics)
             self._finalizer.detach()  # don't call shutdown later
+            # Shutdown in local deploy_mode
+            if hasattr(self, '_local_cluster'):
+                self._local_cluster.close()
+                del self._local_cluster
 
     def close(self, **kwargs):
         """Close this cluster. An alias for ``shutdown``.
@@ -460,10 +552,15 @@ class YarnCluster(object):
             with log_errors():
                 self.scale(request.value)
 
-        box = VBox([title,
-                    HBox([status, request, scale])])
+        elements = [title,
+                    HBox([status, request, scale])]
 
-        self._cached_widget = box
+        if self.dashboard_link is not None:
+            link = HTML('<p><b>Dashboard: </b><a href="%s" target="_blank">%s'
+                        '</a></p>\n' % (self.dashboard_link, self.dashboard_link))
+            elements.append(link)
+
+        self._cached_widget = box = VBox(elements)
 
         def update():
             status.value = self._widget_status()

@@ -15,13 +15,9 @@ from distributed.cli.utils import install_signal_handlers, uri_from_host_port
 from distributed.proctitle import (enable_proctitle_on_children,
                                    enable_proctitle_on_current)
 
-if sys.version_info.major > 2:
-    from urllib.parse import urlparse
-else:
-    from urlparse import urlparse
-
 from . import __version__
-from .core import _make_submit_specification
+from .compat import urlparse
+from .core import _make_submit_specification, YarnCluster
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -123,11 +119,11 @@ def _parse_env(service, env):
 
 # Exposed for testing
 def _parse_submit_kwargs(**kwargs):
-    if kwargs.get('worker_env'):
+    if kwargs.get('worker_env') is not None:
         kwargs['worker_env'] = _parse_env('worker', kwargs['worker_env'])
-    if kwargs.get('client_env'):
+    if kwargs.get('client_env') is not None:
         kwargs['client_env'] = _parse_env('client', kwargs['client_env'])
-    if kwargs.get('tags'):
+    if kwargs.get('tags') is not None:
         kwargs['tags'] = set(map(str.strip, kwargs["tags"].split(",")))
     if kwargs.get('worker_count') is not None:
         kwargs['n_workers'] = kwargs.pop('worker_count')
@@ -147,6 +143,10 @@ def _parse_submit_kwargs(**kwargs):
             arg("--environment",
                 help=("Path to an archived Python environment (either "
                       "``tar.gz`` or ``zip``).")),
+            arg("--deploy-mode",
+                help=("Either 'remote' (default) or 'local'. If 'remote', the "
+                      "scheduler and client will be deployed in a YARN "
+                      "container. If 'local', they will be run locally.")),
             arg("--worker-count", type=int,
                 help="The number of workers to initially start."),
             arg("--worker-vcores", type=int,
@@ -178,11 +178,34 @@ def _parse_submit_kwargs(**kwargs):
                 help=("The amount of memory to allocate for the scheduler. "
                       "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
                       "Will be rounded up to the nearest MiB.")))
-def submit(script, **kwargs):
+def submit(script, args=None, **kwargs):
     kwargs = _parse_submit_kwargs(**kwargs)
-    spec = _make_submit_specification(script, **kwargs)
-    app_id = skein.Client().submit(spec)
-    print(app_id)
+    args = args or []
+    spec = _make_submit_specification(script, args=args, **kwargs)
+
+    if 'dask.scheduler' in spec.services:
+        # deploy_mode == 'remote'
+        app_id = skein.Client().submit(spec)
+        print(app_id)
+    else:
+        # deploy_mode == 'local'
+        if not os.path.exists(script):
+            raise ValueError("%r doesn't exist locally" % script)
+
+        with YarnCluster.from_specification(spec) as cluster:
+            env = dict(os.environ)
+            env.update({'DASK_APPLICATION_ID': cluster.app_id,
+                        'DASK_APPMASTER_ADDRESS': cluster.application_client.address})
+
+            retcode = subprocess.call([sys.executable, script] + args, env=env)
+
+            if retcode == 0:
+                cluster.shutdown("SUCCEEDED")
+            else:
+                cluster.shutdown("FAILED",
+                                 "Exception in submitted dask application, "
+                                 "see logs for more details")
+                sys.exit(retcode)
 
 
 app_id = arg('app_id', help='The application id', metavar='APP_ID')
@@ -224,7 +247,7 @@ services = node(entry_subs, 'services', 'Manage Dask services')
 
 @subcommand(services.subs,
             'scheduler', 'Start a Dask scheduler process')
-def scheduler():
+def scheduler():  # pragma: nocover
     app_client = skein.ApplicationClient.from_current()
 
     enable_proctitle_on_current()
@@ -252,14 +275,16 @@ def scheduler():
 
     install_signal_handlers(loop)
 
-    app_client.kv['dask.scheduler'] = scheduler.address.encode()
-
+    # Set dask.dashboard before dask.scheduler since the YarnCluster object
+    # waits on dask.scheduler only
     if bokeh:
         bokeh_port = scheduler.services['bokeh'].port
         bokeh_host = urlparse(scheduler.address).hostname
         bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
 
         app_client.kv['dask.dashboard'] = bokeh_address.encode()
+
+    app_client.kv['dask.scheduler'] = scheduler.address.encode()
 
     try:
         loop.start()
@@ -278,7 +303,7 @@ def scheduler():
                       "integer (in bytes), a string (like '5 GiB' or '500 "
                       "MiB'), or 0 (no memory management). Defaults to the "
                       "container memory limit.")))
-def worker(nthreads=None, memory_limit=None):
+def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     enable_proctitle_on_current()
     enable_proctitle_on_children()
 
@@ -319,22 +344,16 @@ def worker(nthreads=None, memory_limit=None):
             arg("script", help="Path to a Python script to run."),
             arg("args", nargs=argparse.REMAINDER,
                 help="Any additional arguments to forward to `script`"))
-def client(script, args=None):
+def client(script, args=None):  # pragma: nocover
     app = skein.ApplicationClient.from_current()
     args = args or []
 
     if not os.path.exists(script):
         raise ValueError("%r doesn't exist" % script)
 
-    try:
-        subprocess.check_call([sys.executable, script] + args)
-        succeeded = True
-        retcode = 0
-    except subprocess.CalledProcessError as exc:
-        succeeded = False
-        retcode = exc.returncode
+    retcode = subprocess.call([sys.executable, script] + args)
 
-    if succeeded:
+    if retcode == 0:
         app.shutdown("SUCCEEDED")
     else:
         print("User submitted application %s failed with returncode "
@@ -352,5 +371,5 @@ def main(args=None):
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: nocover
     main()
