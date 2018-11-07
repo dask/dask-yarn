@@ -2,6 +2,7 @@ from __future__ import absolute_import, print_function, division
 
 import math
 import os
+import warnings
 
 import dask
 from dask.distributed import get_client, LocalCluster
@@ -35,9 +36,12 @@ def lookup(kwargs, a, b):
     return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
 
 
-def _maybe_start_client(skein_client):
+def _get_skein_client(skein_client=None):
     if skein_client is None:
-        return skein.Client()
+        # Silence warning about credentials not being written yet
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            return skein.Client()
     return skein_client
 
 
@@ -278,7 +282,7 @@ class YarnCluster(object):
             raise ValueError("Provided Skein specification must include a "
                              "'dask.worker' service")
 
-        skein_client = _maybe_start_client(skein_client)
+        skein_client = _get_skein_client(skein_client)
 
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
@@ -361,7 +365,7 @@ class YarnCluster(object):
         YarnCluster
         """
         self = super(YarnCluster, cls).__new__(cls)
-        skein_client = _maybe_start_client(skein_client)
+        skein_client = _get_skein_client(skein_client)
         app = skein_client.connect(app_id)
         self._connect_existing(app)
         return self
