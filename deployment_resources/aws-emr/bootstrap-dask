@@ -95,7 +95,7 @@ conda update conda -y
 # We install a few packages by default, and allow users to extend this list
 # with a CLI flag:
 #
-# - dask-yarn >= 0.4.0, for deploying Dask on YARN.
+# - dask-yarn >= 0.4.1, for deploying Dask on YARN.
 # - pyarrow for working with hdfs, parquet, ORC, etc...
 # - s3fs for access to s3
 # - nomkl to minimize environment size
@@ -108,7 +108,7 @@ conda install \
 -y \
 -q \
 python=3.6 \
-dask-yarn>=0.4.0 \
+dask-yarn>=0.4.1 \
 pyarrow \
 s3fs \
 nomkl \
