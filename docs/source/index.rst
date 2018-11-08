@@ -2,7 +2,7 @@ Dask-Yarn
 =========
 
 Dask-Yarn deploys Dask on `YARN
-<https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`_
+<https://hadoop.apache.org/docs/current/hadoop-yarn/hadoop-yarn-site/YARN.html>`__
 clusters, such as are found in traditional Hadoop installations. Dask-Yarn
 provides an easy interface to quickly start, scale, and stop Dask clusters
 natively from Python.
@@ -59,5 +59,6 @@ always be installed from source.
     environments.rst
     configuration.rst
     submit.rst
+    aws-emr.rst
     api.rst
     cli.rst
