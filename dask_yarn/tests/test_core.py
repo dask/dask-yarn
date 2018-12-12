@@ -246,10 +246,12 @@ def test_make_submit_specification(deploy_mode):
                                       deploy_mode=deploy_mode,
                                       environment='myenv.tar.gz',
                                       name='test-name',
+                                      user='alice',
                                       client_vcores=2,
                                       client_memory='2 GiB')
 
     assert spec.name == 'test-name'
+    assert spec.user == 'alice'
     if deploy_mode == 'local':
         assert set(spec.services) == {'dask.worker'}
         assert 'environment' in spec.services['dask.worker'].files

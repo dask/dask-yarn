@@ -7,6 +7,8 @@ yarn:
   queue: default             # Yarn queue to deploy to
   environment: null          # Path to conda packed environment
   tags: []                   # List of strings to tag applications
+  user: ''                   # The user to submit the application on behalf of,
+                             # leave as empty string for current user.
 
   scheduler:                 # Specifications of scheduler container
     vcores: 1
