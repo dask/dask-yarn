@@ -2,6 +2,7 @@ from __future__ import division, print_function, absolute_import
 
 import pytest
 
+import skein
 import dask_yarn
 from dask_yarn.cli import main
 from .conftest import ensure_shutdown, wait_for_completion, get_logs
@@ -195,6 +196,63 @@ def test_cli_submit_local(script_kind, final_status, searchtxt,
     # Logs go to err
     assert 'INFO' in err
     assert searchtxt in out or searchtxt in err
+
+
+@pytest.mark.parametrize('deploy_mode, script_kind',
+                         [('remote', 'good'),
+                          ('local', 'good'),
+                          ('local', 'bad')])
+def test_cli_submit_temp_credentials(deploy_mode, script_kind, tmpdir,
+                                     conda_env, skein_client, capfd):
+    if script_kind == 'good':
+        error = False
+        final_status = 'SUCCEEDED'
+        searchtxt = 'Done!'
+        script = GOOD_TEST_SCRIPT
+    else:
+        error = True
+        final_status = 'FAILED'
+        searchtxt = 'Failed!'
+        script = BAD_TEST_SCRIPT
+
+    script_path = str(tmpdir.join('script.py'))
+    with open(script_path, 'w') as fil:
+        fil.write(script)
+
+    run_command('submit '
+                '--name test-cli-submit-temp-credentials '
+                '--deploy-mode %s '
+                '--environment %s '
+                '--worker-count 1 '
+                '--worker-memory 256MiB '
+                '--worker-vcores 1 '
+                '--scheduler-memory 256MiB '
+                '--scheduler-vcores 1 '
+                '--client-memory 128MiB '
+                '--client-vcores 1 '
+                '--temporary-security-credentials '
+                '%s' % (deploy_mode, conda_env, script_path),
+                error=error)
+
+    out, err = capfd.readouterr()
+    # Logs go to err
+    assert 'INFO' in err
+
+    if deploy_mode == 'remote':
+        app_id = out.strip()
+        assert '\n' not in app_id
+
+        with ensure_shutdown(skein_client, app_id, status=final_status):
+            app = skein_client.connect(app_id)
+            with pytest.raises(skein.ConnectionError):
+                # Can't communicate due to mismatched security credentials
+                app.get_specification()
+            wait_for_completion(skein_client, app_id, timeout=60)
+
+        logs = get_logs(app_id)
+        assert searchtxt in logs
+    else:
+        assert searchtxt in out or searchtxt in err
 
 
 def test_cli_kill(tmpdir, conda_env, skein_client, capfd):
