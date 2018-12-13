@@ -36,12 +36,12 @@ def lookup(kwargs, a, b):
     return kwargs[a] if kwargs.get(a) is not None else dask.config.get(b)
 
 
-def _get_skein_client(skein_client=None):
+def _get_skein_client(skein_client=None, security=None):
     if skein_client is None:
         # Silence warning about credentials not being written yet
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            return skein.Client()
+            return skein.Client(security=security)
     return skein_client
 
 
@@ -392,8 +392,12 @@ class YarnCluster(object):
         self = super(YarnCluster, cls).__new__(cls)
         app_id = os.environ.get('DASK_APPLICATION_ID', None)
         app_address = os.environ.get('DASK_APPMASTER_ADDRESS', None)
+        security_dir = os.environ.get('DASK_SECURITY_CREDENTIALS', None)
         if app_id is not None and app_address is not None:
-            app = skein.ApplicationClient(app_address, app_id)
+            security = (None if security_dir is None
+                        else skein.Security.from_directory(security_dir))
+            app = skein.ApplicationClient(app_address, app_id,
+                                          security=security)
         else:
             app = skein.ApplicationClient.from_current()
         self._connect_existing(app)

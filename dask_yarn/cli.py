@@ -2,8 +2,11 @@ from __future__ import print_function, division, absolute_import
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 
 import skein
 from skein.utils import format_table, humanize_timedelta
@@ -181,25 +184,42 @@ def _parse_submit_kwargs(**kwargs):
             arg("--scheduler-memory", type=str,
                 help=("The amount of memory to allocate for the scheduler. "
                       "Accepts a unit suffix (e.g. '2 GiB' or '4096 MiB'). "
-                      "Will be rounded up to the nearest MiB.")))
-def submit(script, args=None, **kwargs):
+                      "Will be rounded up to the nearest MiB.")),
+            arg("--temporary-security-credentials",
+                action="store_true",
+                help=("Instead of using a consistent set of TLS credentials "
+                      "for all clusters, create a fresh set just for this "
+                      "application.")))
+def submit(script, args=None, temporary_security_credentials=False, **kwargs):
     kwargs = _parse_submit_kwargs(**kwargs)
     args = args or []
     spec = _make_submit_specification(script, args=args, **kwargs)
 
+    if temporary_security_credentials:
+        security = skein.Security.new_credentials()
+    else:
+        security = None
+
+    skein_client = _get_skein_client(security=security)
+
     if 'dask.scheduler' in spec.services:
         # deploy_mode == 'remote'
-        app_id = _get_skein_client().submit(spec)
+        app_id = skein_client.submit(spec)
         print(app_id)
     else:
         # deploy_mode == 'local'
         if not os.path.exists(script):
             raise ValueError("%r doesn't exist locally" % script)
 
-        with YarnCluster.from_specification(spec) as cluster:
+        with maybe_tempdir(temporary_security_credentials) as security_dir, \
+                YarnCluster.from_specification(spec,
+                                               skein_client=skein_client) as cluster:
             env = dict(os.environ)
             env.update({'DASK_APPLICATION_ID': cluster.app_id,
                         'DASK_APPMASTER_ADDRESS': cluster.application_client.address})
+            if temporary_security_credentials:
+                security.to_directory(security_dir)
+                env['DASK_SECURITY_CREDENTIALS'] = security_dir
 
             retcode = subprocess.call([sys.executable, script] + args, env=env)
 
@@ -210,6 +230,19 @@ def submit(script, args=None, **kwargs):
                                  "Exception in submitted dask application, "
                                  "see logs for more details")
                 sys.exit(retcode)
+
+
+@contextmanager
+def maybe_tempdir(create=False):
+    """Contextmanager for consistent syntax for maybe creating a tempdir"""
+    if create:
+        try:
+            path = tempfile.mkdtemp()
+            yield path
+        finally:
+            shutil.rmtree(path)
+    else:
+        yield None
 
 
 app_id = arg('app_id', help='The application id', metavar='APP_ID')
