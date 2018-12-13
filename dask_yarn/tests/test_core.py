@@ -241,6 +241,88 @@ def test_make_specification_errors():
     assert '1234 MiB' in str(info.value)
 
 
+@pytest.mark.parametrize('env,path', [
+    ('conda://env-name', 'env-name'),
+    ('conda:///env/path', '/env/path')
+])
+def test_environment_conda(env, path):
+    spec = _make_submit_specification('script.py',
+                                      args=('foo', 'bar'),
+                                      deploy_mode='remote',
+                                      environment=env)
+    scheduler = spec.services['dask.scheduler']
+    assert not scheduler.files
+    assert scheduler.commands == ['conda activate %s' % path,
+                                  'dask-yarn services scheduler']
+    worker = spec.services['dask.worker']
+    assert not worker.files
+    assert worker.commands == ['conda activate %s' % path,
+                               'dask-yarn services worker']
+    client = spec.services['dask.client']
+    assert set(client.files) == {'script.py'}
+    assert client.commands == ['conda activate %s' % path,
+                               'dask-yarn services client script.py foo bar']
+
+
+def test_environment_venv():
+    env = 'venv:///path/to/environment'
+    path = '/path/to/environment'
+    spec = _make_submit_specification('script.py',
+                                      args=('foo', 'bar'),
+                                      deploy_mode='remote',
+                                      environment=env)
+    scheduler = spec.services['dask.scheduler']
+    assert not scheduler.files
+    assert scheduler.commands == ['source %s/bin/activate' % path,
+                                  'dask-yarn services scheduler']
+    worker = spec.services['dask.worker']
+    assert not worker.files
+    assert worker.commands == ['source %s/bin/activate' % path,
+                               'dask-yarn services worker']
+    client = spec.services['dask.client']
+    assert set(client.files) == {'script.py'}
+    assert client.commands == ['source %s/bin/activate' % path,
+                               'dask-yarn services client script.py foo bar']
+
+
+def test_environment_python_path():
+    env = "python:///path/to/python"
+    cmd = "/path/to/python -m dask_yarn.cli"
+    spec = _make_submit_specification('script.py',
+                                      args=('foo', 'bar'),
+                                      deploy_mode='remote',
+                                      environment=env)
+    scheduler = spec.services['dask.scheduler']
+    assert not scheduler.files
+    assert scheduler.commands == ['%s services scheduler' % cmd]
+    worker = spec.services['dask.worker']
+    assert not worker.files
+    assert worker.commands == ['%s services worker' % cmd]
+    client = spec.services['dask.client']
+    assert set(client.files) == {'script.py'}
+    assert client.commands == ['%s services client script.py foo bar' % cmd]
+
+
+def test_environment_archive():
+    env = 'env.tar.gz'
+    spec = _make_submit_specification('script.py',
+                                      args=('foo', 'bar'),
+                                      deploy_mode='remote',
+                                      environment=env)
+    scheduler = spec.services['dask.scheduler']
+    assert set(scheduler.files) == {'environment'}
+    assert scheduler.commands == ['source environment/bin/activate',
+                                  'dask-yarn services scheduler']
+    worker = spec.services['dask.worker']
+    assert set(worker.files) == {'environment'}
+    assert worker.commands == ['source environment/bin/activate',
+                               'dask-yarn services worker']
+    client = spec.services['dask.client']
+    assert set(client.files) == {'environment', 'script.py'}
+    assert client.commands == ['source environment/bin/activate',
+                               'dask-yarn services client script.py foo bar']
+
+
 @pytest.mark.parametrize('deploy_mode', ['local', 'remote'])
 def test_make_submit_specification(deploy_mode):
     spec = _make_submit_specification('../script.py',
@@ -283,7 +365,9 @@ def test_make_submit_specification(deploy_mode):
             assert spec.services['dask.client'].env == {'foo': 'bar'}
 
 
-def test_environment_relative_paths(conda_env):
-    a = _make_specification(environment=conda_env).to_dict()
-    b = _make_specification(environment=os.path.relpath(conda_env)).to_dict()
+def test_environment_relative_paths():
+    relpath = 'path/to/foo.tar.gz'
+    abspath = os.path.abspath(relpath)
+    a = _make_specification(environment=relpath).to_dict()
+    b = _make_specification(environment=abspath).to_dict()
     assert a == b
