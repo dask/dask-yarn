@@ -1,10 +1,23 @@
-Distributing Python Environments
-================================
+Managing Python Environments
+============================
 
 We need to ensure that the libraries used on the Yarn cluster are the same as
-what you are using locally. By default, ``dask-yarn`` handles this by
-distributing a packaged python environment to the Yarn cluster as part of the
-applications. This is typically handled using
+what you are using locally. There are a few ways to specify this:
+
+- The path to an archived environment (either conda_ or virtual_ environments)
+- The path to a Conda_ environment (as ``conda:///...``)
+- The path to a `virtual environment`_ (as ``venv:///...``)
+- The path to a python executable (as ``python:///...``)
+
+Note that when not using an archive, the provided path must be valid on all
+nodes in the cluster.
+
+Using Archived Python Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The most common way to use ``dask-yarn`` is to distribute an archived Python
+environment throughout the YARN cluster as part of the application. Packaging
+the environment for distribution is typically handled using
 
 - conda-pack_ for Conda_ environments
 - venv-pack_  for `virtual environments`_
@@ -13,8 +26,8 @@ These environments can contain any Python packages you might need, but require
 ``dask-yarn`` (and its dependencies) at a minimum.
 
 
-Packing Conda Environments using Conda-Pack
--------------------------------------------
+Archiving Conda Environments Using Conda-Pack
+---------------------------------------------
 
 You can package a conda environment using conda-pack_.
 
@@ -30,8 +43,8 @@ You can package a conda environment using conda-pack_.
     [########################################] | 100% Completed |  12.2s
 
 
-Packing Virtual Environments using Venv-Pack
---------------------------------------------
+Archiving Virtual Environments Using Venv-Pack
+----------------------------------------------
 
 You can package a virtual environment using venv-pack_. The virtual environment
 can be created using either venv_ or virtualenv_. Note that the python linked
@@ -55,12 +68,21 @@ the `venv-pack documentation`_.
     [########################################] | 100% Completed |  8.3s
 
 
-Specifying the Environment for the Cluster
-------------------------------------------
+Specifying the Archived Environment
+-----------------------------------
 
 You can now start a cluster with the packaged environment by passing the
 path to the constructor, e.g. ``YarnCluster(environment='my-env.tar.gz',
-...)``. After startup you may want to verify that your versions match with the
+...)``.
+
+Note that if the environment is a local file, the archive will be automatically
+uploaded to a temporary directory on HDFS before starting the application. If
+you find yourself reusing the same environment multiple times, you may want to
+upload the environment to HDFS once beforehand to avoid repeating this process
+for each cluster (the environment is then specified as
+``hdfs:///path/to/my-env.tar.gz``).
+
+After startup you may want to verify that your versions match with the
 following:
 
 .. code-block:: python
@@ -73,9 +95,46 @@ following:
    client.get_versions(check=True)  # check that versions match between all nodes
 
 
+Using Python Environments Local to Each Node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Alternatively, you can specify the path to a `conda environment`_, `virtual
+environment`_, or Python executable that is already found on each node:
+
+.. code-block:: python
+
+   from dask_yarn import YarnCluster
+
+   # Use a conda environment at /path/to/my/conda/env
+   cluster = YarnCluster(environment='conda:///path/to/my/conda/env')
+
+   # Use a virtual environment at /path/to/my/virtual/env
+   cluster = YarnCluster(environment='venv:///path/to/my/virtual/env')
+
+   # Use a Python executable at /path/to/my/python
+   cluster = YarnCluster(environment='python:///path/to/my/python')
+
+As before, these environments can have any Python packages, but must include
+``dask-yarn`` (and its dependencies) at a minimum. It's also *very important*
+that these environments are uniform across all nodes; mismatched environments
+can lead to hard to diagnose issues. To check this, you can use the
+``Client.get_versions`` method:
+
+.. code-block:: python
+
+   from dask.distributed import Client
+
+   client = Client(cluster)
+   client.get_versions(check=True)  # check that versions match between all nodes
+
+
+
 .. _conda-pack: https://conda.github.io/conda-pack/
+.. _conda environment: http://conda.io/
 .. _conda: http://conda.io/
 .. _venv:
+.. _virtual:
+.. _virtual environment:
 .. _virtual environments: https://docs.python.org/3/library/venv.html
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 .. _venv-pack documentation:

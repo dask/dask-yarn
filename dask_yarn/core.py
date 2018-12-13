@@ -47,6 +47,36 @@ def _get_skein_client(skein_client=None):
 
 # exposed for testing only
 
+def _files_and_build_cmds(environment):
+    parsed = urlparse(environment)
+    scheme = parsed.scheme
+
+    if scheme in {'conda', 'venv', 'python'}:
+        path = environment[len(scheme) + 3:]
+        files = {}
+    else:
+        # Treat archived environments the same as venvs
+        scheme = 'venv'
+        path = 'environment'
+        files = {'environment': environment}
+
+    if scheme == 'conda':
+        setup = 'conda activate %s' % path
+        cli = 'dask-yarn'
+    elif scheme == 'venv':
+        setup = 'source %s/bin/activate' % path
+        cli = 'dask-yarn'
+    else:
+        setup = ''
+        cli = '%s -m dask_yarn.cli' % path
+
+    def make_commands(cmd):
+        command = '%s %s' % (cli, cmd)
+        return [setup, command] if setup else [command]
+
+    return files, make_commands
+
+
 def _make_specification(**kwargs):
     """ Create specification to run Dask Cluster
 
@@ -73,9 +103,14 @@ def _make_specification(**kwargs):
 
     environment = lookup(kwargs, 'environment', 'yarn.environment')
     if environment is None:
-        msg = ("You must provide a path to an archived Python environment for "
-               "the workers.\n"
-               "This is commonly achieved through conda-pack or venv-pack.\n\n"
+        msg = ("You must provide a path to a Python environment for the workers.\n"
+               "This may be one of the following:\n"
+               "- A conda environment archived with conda-pack\n"
+               "- A virtual environment archived with venv-pack\n"
+               "- A path to a conda environment, specified as conda://...\n"
+               "- A path to a virtual environment, specified as venv://...\n"
+               "- A path to a python binary to use, specified as python://...\n"
+               "\n"
                "See http://yarn.dask.org/environments.html for more information.")
         raise ValueError(msg)
 
@@ -87,6 +122,8 @@ def _make_specification(**kwargs):
                                  'worker')
 
     services = {}
+
+    files, build_cmds = _files_and_build_cmds(environment)
 
     if deploy_mode == 'remote':
         scheduler_vcores = lookup(kwargs, 'scheduler_vcores',
@@ -102,9 +139,8 @@ def _make_specification(**kwargs):
                 memory=scheduler_memory
             ),
             max_restarts=0,
-            files={'environment': environment},
-            commands=['source environment/bin/activate',
-                      'dask-yarn services scheduler']
+            files=files,
+            commands=build_cmds('services scheduler')
         )
         worker_depends = ['dask.scheduler']
     else:
@@ -118,10 +154,9 @@ def _make_specification(**kwargs):
         ),
         max_restarts=worker_restarts,
         depends=worker_depends,
-        files={'environment': environment},
+        files=files,
         env=worker_env,
-        commands=['source environment/bin/activate',
-                  'dask-yarn services worker']
+        commands=build_cmds('services worker')
     )
 
     spec = skein.ApplicationSpec(name=name,
@@ -134,14 +169,18 @@ def _make_specification(**kwargs):
 def _make_submit_specification(script, args=(), **kwargs):
     spec = _make_specification(**kwargs)
 
+    environment = lookup(kwargs, 'environment', 'yarn.environment')
+    files, build_cmds = _files_and_build_cmds(environment)
+
     if 'dask.scheduler' in spec.services:
         # deploy_mode == 'remote'
         client_vcores = lookup(kwargs, 'client_vcores', 'yarn.client.vcores')
         client_memory = lookup(kwargs, 'client_memory', 'yarn.client.memory')
         client_env = lookup(kwargs, 'client_env', 'yarn.client.env')
         client_memory = parse_memory(client_memory, 'client')
-        environment = spec.services['dask.worker'].files['environment']
+
         script_name = os.path.basename(script)
+        files[script_name] = script
 
         spec.services['dask.client'] = skein.Service(
             instances=1,
@@ -151,13 +190,10 @@ def _make_submit_specification(script, args=(), **kwargs):
             ),
             max_restarts=0,
             depends=['dask.scheduler'],
-            files={'environment': environment,
-                   script_name: script},
+            files=files,
             env=client_env,
-            commands=[
-                'source environment/bin/activate',
-                'dask-yarn services client %s %s' % (script_name, ' '.join(args))
-            ]
+            commands=build_cmds('services client %s %s'
+                                % (script_name, ' '.join(args)))
         )
     return spec
 
@@ -172,7 +208,13 @@ class YarnCluster(object):
     Parameters
     ----------
     environment : str, optional
-        Path to an archived Python environment (either ``tar.gz`` or ``zip``).
+        The Python environment to use. Can be one of the following:
+          - A path to an archived Python environment
+          - A path to a conda environment, specified as `conda:///...`
+          - A path to a virtual environment, specified as `venv:///...`
+          - A path to a python executable, specifed as `python:///...`
+        Note that if not an archive, the paths specified must be valid on all
+        nodes in the cluster.
     n_workers : int, optional
         The number of workers to initially start.
     worker_vcores : int, optional

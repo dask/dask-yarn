@@ -141,8 +141,8 @@ def _parse_submit_kwargs(**kwargs):
                 help=("A comma-separated list of strings to use as "
                       "tags for this application.")),
             arg("--environment",
-                help=("Path to an archived Python environment (either "
-                      "``tar.gz`` or ``zip``).")),
+                help=("Path to the Python environment to use. See the docs "
+                      "for more information")),
             arg("--deploy-mode",
                 help=("Either 'remote' (default) or 'local'. If 'remote', the "
                       "scheduler and client will be deployed in a YARN "
