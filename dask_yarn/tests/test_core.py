@@ -1,7 +1,6 @@
 from __future__ import division, print_function, absolute_import
 
 import os
-import shutil
 import time
 
 import dask
@@ -134,10 +133,10 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
         # Patch environment so it looks like a container
         container_id = 'container_1526134340424_0012_01_000005'
         cont_dir = tmpdir.mkdir(container_id)
-        shutil.copyfile(skein_client.security.cert_path,
-                        str(cont_dir.join(".skein.crt")))
-        shutil.copyfile(skein_client.security.key_path,
-                        str(cont_dir.join(".skein.pem")))
+        with open(str(cont_dir.join(".skein.crt")), 'wb') as fil:
+            fil.write(skein_client.security._get_bytes('cert'))
+        with open(str(cont_dir.join(".skein.pem")), 'wb') as fil:
+            fil.write(skein_client.security._get_bytes('key'))
 
         for key, val in [('SKEIN_APPLICATION_ID', cluster.app_id),
                          ('CONTAINER_ID', container_id),
@@ -173,6 +172,7 @@ def test_configuration():
         'environment': 'myenv.tar.gz',
         'queue': 'myqueue',
         'name': 'dask-yarn-tests',
+        'user': 'alice',
         'tags': ['a', 'b', 'c'],
         'specification': None,
         'worker': {'memory': '1234 MiB', 'count': 1, 'vcores': 1, 'restarts': -1,
@@ -183,6 +183,7 @@ def test_configuration():
     with dask.config.set(config):
         spec = _make_specification()
         assert spec.name == 'dask-yarn-tests'
+        assert spec.user == 'alice'
         assert spec.queue == 'myqueue'
         assert spec.tags == {'a', 'b', 'c'}
         assert spec.services['dask.worker'].resources.memory == 1234
@@ -246,10 +247,12 @@ def test_make_submit_specification(deploy_mode):
                                       deploy_mode=deploy_mode,
                                       environment='myenv.tar.gz',
                                       name='test-name',
+                                      user='alice',
                                       client_vcores=2,
                                       client_memory='2 GiB')
 
     assert spec.name == 'test-name'
+    assert spec.user == 'alice'
     if deploy_mode == 'local':
         assert set(spec.services) == {'dask.worker'}
         assert 'environment' in spec.services['dask.worker'].files

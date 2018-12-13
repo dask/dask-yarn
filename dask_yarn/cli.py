@@ -137,6 +137,10 @@ def _parse_submit_kwargs(**kwargs):
                 help="Any additional arguments to forward to `script`"),
             arg("--name", help="The application name"),
             arg("--queue", help="The queue to deploy to"),
+            arg("--user",
+                help=("The user to submit the application on behalf of. Default "
+                      "is the current user - submitting as a different user "
+                      "requires proxy-user permissions.")),
             arg("--tags",
                 help=("A comma-separated list of strings to use as "
                       "tags for this application.")),

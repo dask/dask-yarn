@@ -70,6 +70,7 @@ def _make_specification(**kwargs):
     name = lookup(kwargs, 'name', 'yarn.name')
     queue = lookup(kwargs, 'queue', 'yarn.queue')
     tags = lookup(kwargs, 'tags', 'yarn.tags')
+    user = lookup(kwargs, 'user', 'yarn.user')
 
     environment = lookup(kwargs, 'environment', 'yarn.environment')
     if environment is None:
@@ -127,6 +128,7 @@ def _make_specification(**kwargs):
     spec = skein.ApplicationSpec(name=name,
                                  queue=queue,
                                  tags=tags,
+                                 user=user,
                                  services=services)
     return spec
 
@@ -202,6 +204,10 @@ class YarnCluster(object):
         The queue to deploy to.
     tags : sequence, optional
         A set of strings to use as tags for this application.
+    user : str, optional
+        The user to submit the application on behalf of. Default is the current
+        user - submitting as a different user requires user permissions, see
+        the YARN documentation for more information.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
 
@@ -223,6 +229,7 @@ class YarnCluster(object):
                  name=None,
                  queue=None,
                  tags=None,
+                 user=None,
                  skein_client=None):
 
         spec = _make_specification(environment=environment,
@@ -236,7 +243,8 @@ class YarnCluster(object):
                                    deploy_mode=deploy_mode,
                                    name=name,
                                    queue=queue,
-                                   tags=tags)
+                                   tags=tags,
+                                   user=user)
 
         self._start_cluster(spec, skein_client)
 
