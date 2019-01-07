@@ -281,7 +281,7 @@ def test_environment_venv():
     client = spec.services['dask.client']
     assert set(client.files) == {'script.py'}
     assert client.script == ('source %s/bin/activate\n'
-                             'dask-yarn services client script.py foo bar')
+                             'dask-yarn services client script.py foo bar') % path
 
 
 def test_environment_python_path():
