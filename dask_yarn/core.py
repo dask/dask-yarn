@@ -47,7 +47,7 @@ def _get_skein_client(skein_client=None, security=None):
 
 # exposed for testing only
 
-def _files_and_build_cmds(environment):
+def _files_and_build_script(environment):
     parsed = urlparse(environment)
     scheme = parsed.scheme
 
@@ -70,11 +70,11 @@ def _files_and_build_cmds(environment):
         setup = ''
         cli = '%s -m dask_yarn.cli' % path
 
-    def make_commands(cmd):
+    def build_script(cmd):
         command = '%s %s' % (cli, cmd)
-        return [setup, command] if setup else [command]
+        return '\n'.join([setup, command]) if setup else command
 
-    return files, make_commands
+    return files, build_script
 
 
 def _make_specification(**kwargs):
@@ -124,7 +124,7 @@ def _make_specification(**kwargs):
 
     services = {}
 
-    files, build_cmds = _files_and_build_cmds(environment)
+    files, build_script = _files_and_build_script(environment)
 
     if deploy_mode == 'remote':
         scheduler_vcores = lookup(kwargs, 'scheduler_vcores',
@@ -141,7 +141,7 @@ def _make_specification(**kwargs):
             ),
             max_restarts=0,
             files=files,
-            commands=build_cmds('services scheduler')
+            script=build_script('services scheduler')
         )
         worker_depends = ['dask.scheduler']
     else:
@@ -157,7 +157,7 @@ def _make_specification(**kwargs):
         depends=worker_depends,
         files=files,
         env=worker_env,
-        commands=build_cmds('services worker')
+        script=build_script('services worker')
     )
 
     spec = skein.ApplicationSpec(name=name,
@@ -172,7 +172,7 @@ def _make_submit_specification(script, args=(), **kwargs):
     spec = _make_specification(**kwargs)
 
     environment = lookup(kwargs, 'environment', 'yarn.environment')
-    files, build_cmds = _files_and_build_cmds(environment)
+    files, build_script = _files_and_build_script(environment)
 
     if 'dask.scheduler' in spec.services:
         # deploy_mode == 'remote'
@@ -194,7 +194,7 @@ def _make_submit_specification(script, args=(), **kwargs):
             depends=['dask.scheduler'],
             files=files,
             env=client_env,
-            commands=build_cmds('services client %s %s'
+            script=build_script('services client %s %s'
                                 % (script_name, ' '.join(args)))
         )
     return spec

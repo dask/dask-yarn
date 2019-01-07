@@ -83,8 +83,7 @@ def test_from_specification_errors():
             resources:
               memory: 1 GiB
               vcores: 1
-            commands:
-              - exit 1
+            script: exit 1
         """)
     with pytest.raises(ValueError):
         YarnCluster.from_specification(bad_spec)
@@ -252,16 +251,16 @@ def test_environment_conda(env, path):
                                       environment=env)
     scheduler = spec.services['dask.scheduler']
     assert not scheduler.files
-    assert scheduler.commands == ['conda activate %s' % path,
-                                  'dask-yarn services scheduler']
+    assert scheduler.script == ('conda activate %s\n'
+                                'dask-yarn services scheduler') % path
     worker = spec.services['dask.worker']
     assert not worker.files
-    assert worker.commands == ['conda activate %s' % path,
-                               'dask-yarn services worker']
+    assert worker.script == ('conda activate %s\n'
+                             'dask-yarn services worker') % path
     client = spec.services['dask.client']
     assert set(client.files) == {'script.py'}
-    assert client.commands == ['conda activate %s' % path,
-                               'dask-yarn services client script.py foo bar']
+    assert client.script == ('conda activate %s\n'
+                             'dask-yarn services client script.py foo bar') % path
 
 
 def test_environment_venv():
@@ -273,16 +272,16 @@ def test_environment_venv():
                                       environment=env)
     scheduler = spec.services['dask.scheduler']
     assert not scheduler.files
-    assert scheduler.commands == ['source %s/bin/activate' % path,
-                                  'dask-yarn services scheduler']
+    assert scheduler.script == ('source %s/bin/activate\n'
+                                'dask-yarn services scheduler') % path
     worker = spec.services['dask.worker']
     assert not worker.files
-    assert worker.commands == ['source %s/bin/activate' % path,
-                               'dask-yarn services worker']
+    assert worker.script == ('source %s/bin/activate\n'
+                             'dask-yarn services worker') % path
     client = spec.services['dask.client']
     assert set(client.files) == {'script.py'}
-    assert client.commands == ['source %s/bin/activate' % path,
-                               'dask-yarn services client script.py foo bar']
+    assert client.script == ('source %s/bin/activate\n'
+                             'dask-yarn services client script.py foo bar')
 
 
 def test_environment_python_path():
@@ -294,13 +293,13 @@ def test_environment_python_path():
                                       environment=env)
     scheduler = spec.services['dask.scheduler']
     assert not scheduler.files
-    assert scheduler.commands == ['%s services scheduler' % cmd]
+    assert scheduler.script == '%s services scheduler' % cmd
     worker = spec.services['dask.worker']
     assert not worker.files
-    assert worker.commands == ['%s services worker' % cmd]
+    assert worker.script == '%s services worker' % cmd
     client = spec.services['dask.client']
     assert set(client.files) == {'script.py'}
-    assert client.commands == ['%s services client script.py foo bar' % cmd]
+    assert client.script == '%s services client script.py foo bar' % cmd
 
 
 def test_environment_archive():
@@ -311,16 +310,16 @@ def test_environment_archive():
                                       environment=env)
     scheduler = spec.services['dask.scheduler']
     assert set(scheduler.files) == {'environment'}
-    assert scheduler.commands == ['source environment/bin/activate',
-                                  'dask-yarn services scheduler']
+    assert scheduler.script == ('source environment/bin/activate\n'
+                                'dask-yarn services scheduler')
     worker = spec.services['dask.worker']
     assert set(worker.files) == {'environment'}
-    assert worker.commands == ['source environment/bin/activate',
-                               'dask-yarn services worker']
+    assert worker.script == ('source environment/bin/activate\n'
+                             'dask-yarn services worker')
     client = spec.services['dask.client']
     assert set(client.files) == {'environment', 'script.py'}
-    assert client.commands == ['source environment/bin/activate',
-                               'dask-yarn services client script.py foo bar']
+    assert client.script == ('source environment/bin/activate\n'
+                             'dask-yarn services client script.py foo bar')
 
 
 @pytest.mark.parametrize('deploy_mode', ['local', 'remote'])
