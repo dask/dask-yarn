@@ -211,10 +211,12 @@ class YarnCluster(object):
     ----------
     environment : str, optional
         The Python environment to use. Can be one of the following:
+
           - A path to an archived Python environment
           - A path to a conda environment, specified as `conda:///...`
           - A path to a virtual environment, specified as `venv:///...`
           - A path to a python executable, specifed as `python:///...`
+
         Note that if not an archive, the paths specified must be valid on all
         nodes in the cluster.
     n_workers : int, optional
