@@ -1,7 +1,6 @@
 yarn:
-  specification: null        # A full Skein specification or path to a
-                             # specification yaml file. Overrides the following
-                             # configuration if given
+  specification: null        # A path to a skein specification yaml file.
+                             # Overrides the following configuration if given.
 
   name: dask                 # Application name
   queue: default             # Yarn queue to deploy to
