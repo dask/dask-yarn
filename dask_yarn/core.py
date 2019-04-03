@@ -505,7 +505,7 @@ class YarnCluster(object):
         if workers is None:
             workers = self.workers()
         if n > len(workers):
-            self.application_client.scale(service='dask.worker', instances=n)
+            self.application_client.scale('dask.worker', n)
 
     def scale_down(self, workers):
         """Retire the selected workers.
