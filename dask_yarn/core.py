@@ -3,8 +3,10 @@ from __future__ import absolute_import, print_function, division
 import math
 import os
 import warnings
+from distutils.version import LooseVersion
 
 import dask
+import distributed
 from dask.distributed import get_client, LocalCluster
 from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
@@ -338,10 +340,14 @@ class YarnCluster(object):
 
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
+            if LooseVersion(distributed.__version__) >= '1.27.0':
+                kwargs = {'dashboard_address': '0.0.0.0:0'}
+            else:
+                kwargs = {'diagnostics_port': ('', 0)}
             self._local_cluster = LocalCluster(n_workers=0,
                                                ip='0.0.0.0',
-                                               diagnostics_port=('', 0),
-                                               scheduler_port=0)
+                                               scheduler_port=0,
+                                               **kwargs)
             scheduler = self._local_cluster.scheduler
 
             scheduler_address = scheduler.address
