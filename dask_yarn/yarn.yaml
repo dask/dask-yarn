@@ -4,6 +4,7 @@ yarn:
 
   name: dask                 # Application name
   queue: default             # Yarn queue to deploy to
+  deploy-mode: remote        # The deploy mode to use (either remote or local)
   environment: null          # Path to conda packed environment
   tags: []                   # List of strings to tag applications
   user: ''                   # The user to submit the application on behalf of,

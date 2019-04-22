@@ -46,7 +46,7 @@ def test_basic(deploy_mode, skein_client, conda_env):
         start = time.time()
         while len(cluster.workers()) != 2:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(2)"
+            assert time.time() < start + 30, "timeout cluster.scale(2)"
 
         # Scale down
         cluster.scale(1)
@@ -54,7 +54,7 @@ def test_basic(deploy_mode, skein_client, conda_env):
         start = time.time()
         while len(cluster.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
     check_is_shutdown(skein_client, cluster.app_id)
 
@@ -107,7 +107,7 @@ def test_from_application_id(skein_client, conda_env):
         start = time.time()
         while len(cluster2.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
         del cluster2
 
@@ -156,7 +156,7 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
         start = time.time()
         while len(cluster2.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
         del cluster2
 
@@ -166,7 +166,8 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
     check_is_shutdown(skein_client, cluster.app_id)
 
 
-def test_configuration():
+@pytest.mark.parametrize('deploy_mode', ['remote', 'local'])
+def test_configuration(deploy_mode):
     config = {'yarn': {
         'environment': 'myenv.tar.gz',
         'queue': 'myqueue',
@@ -174,6 +175,7 @@ def test_configuration():
         'user': 'alice',
         'tags': ['a', 'b', 'c'],
         'specification': None,
+        'deploy-mode': deploy_mode,
         'worker': {'memory': '1234 MiB', 'count': 1, 'vcores': 1, 'restarts': -1,
                    'env': {'foo': 'bar'}},
         'scheduler': {'memory': '1234 MiB', 'vcores': 1}}
@@ -187,7 +189,10 @@ def test_configuration():
         assert spec.tags == {'a', 'b', 'c'}
         assert spec.services['dask.worker'].resources.memory == 1234
         assert spec.services['dask.worker'].env == {'foo': 'bar'}
-        assert spec.services['dask.scheduler'].resources.memory == 1234
+        if deploy_mode == 'remote':
+            assert spec.services['dask.scheduler'].resources.memory == 1234
+        else:
+            assert 'dask.scheduler' not in spec.services
 
 
 def test_configuration_full_specification(conda_env, tmpdir):

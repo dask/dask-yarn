@@ -94,7 +94,7 @@ def _make_specification(**kwargs):
             return skein.ApplicationSpec.from_dict(spec)
         return skein.ApplicationSpec.from_file(spec)
 
-    deploy_mode = kwargs.get('deploy_mode') or 'remote'
+    deploy_mode = lookup(kwargs, 'deploy_mode', 'yarn.deploy-mode')
     if deploy_mode not in {'remote', 'local'}:
         raise ValueError("`deploy_mode` must be one of {'remote', 'local'}, "
                          "got %r" % deploy_mode)

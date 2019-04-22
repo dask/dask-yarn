@@ -20,10 +20,10 @@ jobs:
 
   include:
     - env:
-      - CLUSTER_TYPE=kerberos
+      - CLUSTER_CONFIG=kerberos
       - PYTHON=3.6
     - env:
-      - CLUSTER_TYPE=base
+      - CLUSTER_CONFIG=simple
       - PYTHON=2.7
 
 before_install:
@@ -35,7 +35,7 @@ before_install:
     # Install the test cluster
   - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
     # Start the test cluster
-  - htcluster startup --image $CLUSTER_TYPE:latest --mount .:dask-yarn
+  - htcluster startup --mount .:dask-yarn --config $CLUSTER_CONFIG
 
 install:
   - htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
@@ -44,7 +44,7 @@ script:
   - set -e
   - export CONDA_ENV=/home/testuser/miniconda/envs/test-environment
   - |
-    if [[ "$CLUSTER_TYPE" == "kerberos" ]]; then
+    if [[ "$CLUSTER_CONFIG" == "kerberos" ]]; then
       htcluster exec -- kinit testuser -kt testuser.keytab
     fi
   - htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
