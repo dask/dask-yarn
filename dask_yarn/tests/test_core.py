@@ -46,7 +46,7 @@ def test_basic(deploy_mode, skein_client, conda_env):
         start = time.time()
         while len(cluster.workers()) != 2:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(2)"
+            assert time.time() < start + 30, "timeout cluster.scale(2)"
 
         # Scale down
         cluster.scale(1)
@@ -54,7 +54,7 @@ def test_basic(deploy_mode, skein_client, conda_env):
         start = time.time()
         while len(cluster.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
     check_is_shutdown(skein_client, cluster.app_id)
 
@@ -107,7 +107,7 @@ def test_from_application_id(skein_client, conda_env):
         start = time.time()
         while len(cluster2.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
         del cluster2
 
@@ -156,7 +156,7 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
         start = time.time()
         while len(cluster2.workers()) != 1:
             time.sleep(0.1)
-            assert time.time() < start + 5, "timeout cluster.scale(1)"
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
 
         del cluster2
 
