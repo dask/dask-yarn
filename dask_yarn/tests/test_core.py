@@ -166,7 +166,8 @@ def test_from_current(skein_client, conda_env, monkeypatch, tmpdir):
     check_is_shutdown(skein_client, cluster.app_id)
 
 
-def test_configuration():
+@pytest.mark.parametrize('deploy_mode', ['remote', 'local'])
+def test_configuration(deploy_mode):
     config = {'yarn': {
         'environment': 'myenv.tar.gz',
         'queue': 'myqueue',
@@ -174,6 +175,7 @@ def test_configuration():
         'user': 'alice',
         'tags': ['a', 'b', 'c'],
         'specification': None,
+        'deploy-mode': deploy_mode,
         'worker': {'memory': '1234 MiB', 'count': 1, 'vcores': 1, 'restarts': -1,
                    'env': {'foo': 'bar'}},
         'scheduler': {'memory': '1234 MiB', 'vcores': 1}}
@@ -187,7 +189,10 @@ def test_configuration():
         assert spec.tags == {'a', 'b', 'c'}
         assert spec.services['dask.worker'].resources.memory == 1234
         assert spec.services['dask.worker'].env == {'foo': 'bar'}
-        assert spec.services['dask.scheduler'].resources.memory == 1234
+        if deploy_mode == 'remote':
+            assert spec.services['dask.scheduler'].resources.memory == 1234
+        else:
+            assert 'dask.scheduler' not in spec.services
 
 
 def test_configuration_full_specification(conda_env, tmpdir):
