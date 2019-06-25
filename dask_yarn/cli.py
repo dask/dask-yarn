@@ -303,7 +303,11 @@ def scheduler():  # pragma: nocover
     services = {}
     bokeh = False
     with ignoring(ImportError):
-        from distributed.bokeh.scheduler import BokehScheduler
+        try:
+            from distributed.dashboard.scheduler import BokehScheduler
+        except ImportError:
+            # Old import location
+            from distributed.bokeh.scheduler import BokehScheduler
         services[('bokeh', 0)] = (BokehScheduler, {})
         bokeh = True
 
