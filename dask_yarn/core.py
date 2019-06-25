@@ -3,6 +3,7 @@ from __future__ import absolute_import, print_function, division
 import math
 import os
 import warnings
+from contextlib import contextmanager
 from distutils.version import LooseVersion
 
 import dask
@@ -24,6 +25,30 @@ Perhaps you meant: "{1} MiB"
 """
 
 _one_MiB = 2**20
+
+
+class DaskYarnError(skein.SkeinError):
+    """An error involving the dask-yarn skein Application"""
+    pass
+
+
+@contextmanager
+def submit_and_handle_failures(skein_client, spec):
+    app_id = skein_client.submit(spec)
+    try:
+        try:
+            yield skein_client.connect(app_id, security=spec.master.security)
+        except BaseException:
+            # Kill the application on any failures
+            skein_client.kill_application(app_id)
+            raise
+    except (skein.ConnectionError, skein.ApplicationNotRunningError):
+        # If the error was an application error, raise appropriately
+        raise DaskYarnError(
+            ("Failed to start dask-yarn {app_id}\n"
+             "See the application logs for more information:\n\n"
+             "$ yarn logs -applicationId {app_id}").format(app_id=app_id)
+        )
 
 
 def parse_memory(memory, field):
@@ -359,27 +384,17 @@ class YarnCluster(object):
                 dashboard_host = urlparse(scheduler_address).hostname
                 dashboard_address = 'http://%s:%d' % (dashboard_host, dashboard_port)
 
-            app = skein_client.submit_and_connect(spec)
-            try:
+            with submit_and_handle_failures(skein_client, spec) as app:
                 app.kv['dask.scheduler'] = scheduler_address.encode()
                 if dashboard_address is not None:
                     app.kv['dask.dashboard'] = dashboard_address.encode()
-            except BaseException:
-                # Failed to connect, kill the application and reraise
-                skein_client.kill_application(app.id)
-                raise
         else:
             # deploy_mode == 'remote'
-            app = skein_client.submit_and_connect(spec)
-            try:
+            with submit_and_handle_failures(skein_client, spec) as app:
                 scheduler_address = app.kv.wait('dask.scheduler').decode()
                 dashboard_address = app.kv.get('dask.dashboard')
                 if dashboard_address is not None:
                     dashboard_address = dashboard_address.decode()
-            except BaseException:
-                # Failed to connect, kill the application and reraise
-                skein_client.kill_application(app.id)
-                raise
 
         # Ensure application gets cleaned up
         self._finalizer = weakref.finalize(self, app.shutdown)
