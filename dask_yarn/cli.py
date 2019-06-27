@@ -14,7 +14,7 @@ from tornado import gen
 from tornado.ioloop import IOLoop, TimeoutError
 from distributed import Scheduler, Nanny
 from distributed.utils import ignoring
-from distributed.cli.utils import install_signal_handlers, uri_from_host_port
+from distributed.cli.utils import install_signal_handlers
 from distributed.proctitle import (enable_proctitle_on_children,
                                    enable_proctitle_on_current)
 
@@ -296,7 +296,7 @@ def scheduler():  # pragma: nocover
         limit = max(soft, hard // 2)
         resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
 
-    addr = uri_from_host_port('', None, 0)
+    addr = 'tcp://'
 
     loop = IOLoop.current()
 
