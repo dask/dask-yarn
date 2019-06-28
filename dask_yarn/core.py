@@ -376,13 +376,14 @@ class YarnCluster(object):
             scheduler = self._local_cluster.scheduler
 
             scheduler_address = scheduler.address
-            try:
-                dashboard_port = scheduler.services['bokeh'].port
-            except KeyError:
-                dashboard_address = None
+            for k in ['dashboard', 'bokeh']:
+                if k in scheduler.services:
+                    dashboard_port = scheduler.services[k].port
+                    dashboard_host = urlparse(scheduler_address).hostname
+                    dashboard_address = 'http://%s:%d' % (dashboard_host, dashboard_port)
+                    break
             else:
-                dashboard_host = urlparse(scheduler_address).hostname
-                dashboard_address = 'http://%s:%d' % (dashboard_host, dashboard_port)
+                dashboard_address = None
 
             with submit_and_handle_failures(skein_client, spec) as app:
                 app.kv['dask.scheduler'] = scheduler_address.encode()
