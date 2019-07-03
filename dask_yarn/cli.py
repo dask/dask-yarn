@@ -359,7 +359,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
 
     loop = IOLoop.current()
 
-    worker = Nanny(scheduler, ncores=nthreads, loop=loop,
+    worker = Nanny(scheduler, nthreads=nthreads, loop=loop,
                    memory_limit=memory_limit, worker_port=0)
 
     @gen.coroutine

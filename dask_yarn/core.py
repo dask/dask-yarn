@@ -582,7 +582,7 @@ class YarnCluster(object):
         workers = client.scheduler_info()['workers']
 
         n_workers = len(workers)
-        cores = sum(w['ncores'] for w in workers.values())
+        cores = sum(w['nthreads'] for w in workers.values())
         memory = sum(w['memory_limit'] for w in workers.values())
 
         text = """
