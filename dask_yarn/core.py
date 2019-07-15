@@ -17,6 +17,22 @@ from skein.utils import cached_property
 from .compat import weakref, urlparse
 
 
+DISTRIBUTED_VERSION = LooseVersion(distributed.__version__)
+
+if DISTRIBUTED_VERSION >= '2.0.0':
+    _NTHREADS_KEYWORD = 'nthreads'
+else:
+    _NTHREADS_KEYWORD = 'ncores'
+
+
+try:
+    from distributed.utils import format_dashboard_link
+except ImportError:
+    def format_dashboard_link(host, port):
+        template = dask.config.get('distributed.dashboard.link')
+        return template.format(host=host, port=port, **os.environ)
+
+
 _memory_error = """Memory specification for the `{0}` take string parameters
 with units like "4 GiB" or "2048 MiB"
 
@@ -324,11 +340,8 @@ class YarnCluster(object):
         """Link to the dask dashboard. None if dashboard isn't running"""
         if self._dashboard_address is None:
             return None
-        template = dask.config.get('distributed.dashboard.link')
         dashboard = urlparse(self._dashboard_address)
-        params = dict(os.environ)
-        params.update({'host': dashboard.hostname, 'port': dashboard.port})
-        return template.format(**params)
+        return format_dashboard_link(dashboard.hostname, dashboard.port)
 
     @classmethod
     def from_specification(cls, spec, skein_client=None):
@@ -365,7 +378,7 @@ class YarnCluster(object):
 
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
-            if LooseVersion(distributed.__version__) >= '1.27.0':
+            if DISTRIBUTED_VERSION >= '1.27.0':
                 kwargs = {'dashboard_address': '0.0.0.0:0'}
             else:
                 kwargs = {'diagnostics_port': ('', 0)}
@@ -582,7 +595,7 @@ class YarnCluster(object):
         workers = client.scheduler_info()['workers']
 
         n_workers = len(workers)
-        cores = sum(w['nthreads'] for w in workers.values())
+        cores = sum(w[_NTHREADS_KEYWORD] for w in workers.values())
         memory = sum(w['memory_limit'] for w in workers.values())
 
         text = """

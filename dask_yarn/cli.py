@@ -20,7 +20,8 @@ from distributed.proctitle import (enable_proctitle_on_children,
 
 from . import __version__
 from .compat import urlparse
-from .core import _make_submit_specification, YarnCluster, _get_skein_client
+from .core import (_make_submit_specification, YarnCluster, _get_skein_client,
+                   _NTHREADS_KEYWORD)
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -359,8 +360,8 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
 
     loop = IOLoop.current()
 
-    worker = Nanny(scheduler, nthreads=nthreads, loop=loop,
-                   memory_limit=memory_limit, worker_port=0)
+    worker = Nanny(scheduler, loop=loop, memory_limit=memory_limit,
+                   worker_port=0, **{_NTHREADS_KEYWORD: nthreads})
 
     @gen.coroutine
     def close(signalnum):
