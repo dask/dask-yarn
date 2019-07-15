@@ -21,7 +21,7 @@ jobs:
   include:
     - env:
       - CLUSTER_CONFIG=kerberos
-      - PYTHON=3.6
+      - PYTHON=3.7
     - env:
       - CLUSTER_CONFIG=simple
       - PYTHON=2.7
