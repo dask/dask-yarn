@@ -6,20 +6,19 @@ error prone, especially when sharing this workflow with new users.
 Alternatively, you can provide defaults in a configuration file, traditionally
 held in ``~/.config/dask/yarn.yaml`` or ``/etc/dask/yarn.yaml``.  Note that
 this configuration is *optional*, and only changes the defaults when not
-specified in the constructor.
+specified in the constructor. You only need to set the fields you care about,
+unset fields will fall back to the `default configuration`_.
 
 **Example:**
 
 .. code-block:: yaml
 
-   # /home/username/.config/dask/yarn.yaml
+   # ~/.config/dask/yarn.yaml
    yarn:
      name: dask                 # Application name
      queue: default             # Yarn queue to deploy to
 
      environment: /path/to/my-env.tar.gz
-
-     tags: []                   # List of strings to tag applications
 
      scheduler:                 # Specifications of scheduler container
        vcores: 1
@@ -28,8 +27,6 @@ specified in the constructor.
      worker:                   # Specifications of worker containers
        vcores: 2
        memory: 8GiB
-       count: 0                 # Number of workers to start on initialization
-       restarts: -1             # Allowed number of restarts, -1 for unlimited
 
 Users can now create YarnClusters without specifying any additional
 information.
@@ -160,6 +157,15 @@ service.
        script: |
          some-custom-initialization-script
          dask-yarn services worker
+
+
+Default Configuration
+---------------------
+
+The default configuration file is as follows
+
+.. literalinclude:: ../../dask_yarn/yarn.yaml
+    :language: yaml
 
 .. _Skein: https://jcrist.github.io/skein/
 .. _Skein specification: https://jcrist.github.io/skein/specification.html

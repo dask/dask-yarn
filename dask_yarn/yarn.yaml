@@ -5,7 +5,7 @@ yarn:
   name: dask                 # Application name
   queue: default             # Yarn queue to deploy to
   deploy-mode: remote        # The deploy mode to use (either remote or local)
-  environment: null          # Path to conda packed environment
+  environment: null          # The Python environment to use
   tags: []                   # List of strings to tag applications
   user: ''                   # The user to submit the application on behalf of,
                              # leave as empty string for current user.
@@ -24,4 +24,4 @@ yarn:
   client:                   # Specification of client container
     vcores: 1
     memory: 2GiB
-    env: {}
+    env: {}                 # A map of environment variables ot set on the client
