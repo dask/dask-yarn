@@ -338,7 +338,6 @@ class YarnCluster(object):
                                    queue=queue,
                                    tags=tags,
                                    user=user)
-        
 
         self._start_cluster(spec, skein_client, dashboard_address, diagnostics_port)
 
@@ -374,7 +373,11 @@ class YarnCluster(object):
         self._start_cluster(spec, skein_client)
         return self
 
-    def _start_cluster(self, spec, skein_client=None, dashboard_address=None, diagnostics_port=None):
+    def _start_cluster(self,
+                       spec,
+                       skein_client=None,
+                       dashboard_address=None,
+                       diagnostics_port=None):
         """Start the cluster and initialize state"""
 
         if 'dask.worker' not in spec.services:
