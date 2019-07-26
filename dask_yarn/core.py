@@ -297,6 +297,10 @@ class YarnCluster(object):
         the YARN documentation for more information.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
+    dashboard_address : str, optional default: '0.0.0.0:8787'
+        The address and port of the dashboard when run in local mode
+    diagnostics_port : ( '', 8787), optional
+        The address and port of the diagnostics port for versions 1.27.0
 
     Examples
     --------
@@ -317,7 +321,9 @@ class YarnCluster(object):
                  queue=None,
                  tags=None,
                  user=None,
-                 skein_client=None):
+                 skein_client=None,
+                 dashboard_address=None,
+                 diagnostics_port=None):
 
         spec = _make_specification(environment=environment,
                                    n_workers=n_workers,
@@ -332,8 +338,9 @@ class YarnCluster(object):
                                    queue=queue,
                                    tags=tags,
                                    user=user)
+        
 
-        self._start_cluster(spec, skein_client)
+        self._start_cluster(spec, skein_client, dashboard_address, diagnostics_port)
 
     @cached_property
     def dashboard_link(self):
@@ -367,7 +374,7 @@ class YarnCluster(object):
         self._start_cluster(spec, skein_client)
         return self
 
-    def _start_cluster(self, spec, skein_client=None):
+    def _start_cluster(self, spec, skein_client=None, dashboard_address=None, diagnostics_port=None):
         """Start the cluster and initialize state"""
 
         if 'dask.worker' not in spec.services:
@@ -379,9 +386,13 @@ class YarnCluster(object):
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
             if DISTRIBUTED_VERSION >= '1.27.0':
-                kwargs = {'dashboard_address': '0.0.0.0:0'}
+                if dashboard_address is None:
+                    dashboard_address = '0.0.0.0:8787'
+                kwargs = {'dashboard_address': dashboard_address}
             else:
-                kwargs = {'diagnostics_port': ('', 0)}
+                if diagnostics_port is None:
+                    diagnostics_port = ('', 8787)
+                kwargs = {'diagnostics_port': diagnostics_port}
             self._local_cluster = LocalCluster(n_workers=0,
                                                ip='0.0.0.0',
                                                scheduler_port=0,
