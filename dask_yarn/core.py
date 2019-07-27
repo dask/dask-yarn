@@ -297,9 +297,9 @@ class YarnCluster(object):
         the YARN documentation for more information.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
-    dashboard_address : str, optional default: '0.0.0.0:8787'
+    dashboard_address : str, optional default: '0.0.0.0:0'
         The address and port of the dashboard when run in local mode
-    diagnostics_port : ( '', 8787), optional
+    diagnostics_port : ( '', 0), optional
         The address and port of the diagnostics port for versions 1.27.0
 
     Examples
@@ -390,11 +390,11 @@ class YarnCluster(object):
             # deploy_mode == 'local'
             if DISTRIBUTED_VERSION >= '1.27.0':
                 if dashboard_address is None:
-                    dashboard_address = '0.0.0.0:8787'
+                    dashboard_address = '0.0.0.0:0'
                 kwargs = {'dashboard_address': dashboard_address}
             else:
                 if diagnostics_port is None:
-                    diagnostics_port = ('', 8787)
+                    diagnostics_port = ('', 0)
                 kwargs = {'diagnostics_port': diagnostics_port}
             self._local_cluster = LocalCluster(n_workers=0,
                                                ip='0.0.0.0',
