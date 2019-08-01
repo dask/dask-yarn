@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function, division
-
 # Load configuration
 from . import config
 del config

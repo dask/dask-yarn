@@ -16,6 +16,7 @@ setup(name='dask-yarn',
       packages=['dask_yarn'],
       include_package_data=True,
       install_requires=install_requires,
+      python_requires=">=3.5",
       entry_points='''
         [console_scripts]
         dask-yarn=dask_yarn.cli:main

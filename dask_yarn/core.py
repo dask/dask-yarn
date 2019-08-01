@@ -1,29 +1,16 @@
-from __future__ import absolute_import, print_function, division
-
 import math
 import os
 import warnings
+import weakref
 from contextlib import contextmanager
-from distutils.version import LooseVersion
+from urllib.parse import urlparse
 
 import dask
-import distributed
 from dask.distributed import get_client, LocalCluster
 from distributed.utils import format_bytes, PeriodicCallback, log_errors
 
 import skein
 from skein.utils import cached_property
-
-from .compat import weakref, urlparse
-
-
-DISTRIBUTED_VERSION = LooseVersion(distributed.__version__)
-
-if DISTRIBUTED_VERSION >= '2.0.0':
-    _NTHREADS_KEYWORD = 'nthreads'
-else:
-    _NTHREADS_KEYWORD = 'ncores'
-
 
 try:
     from distributed.utils import format_dashboard_link
@@ -378,14 +365,10 @@ class YarnCluster(object):
 
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
-            if DISTRIBUTED_VERSION >= '1.27.0':
-                kwargs = {'dashboard_address': '0.0.0.0:0'}
-            else:
-                kwargs = {'diagnostics_port': ('', 0)}
             self._local_cluster = LocalCluster(n_workers=0,
-                                               ip='0.0.0.0',
+                                               host='0.0.0.0',
                                                scheduler_port=0,
-                                               **kwargs)
+                                               dashboard_address="0.0.0.0:0")
             scheduler = self._local_cluster.scheduler
 
             scheduler_address = scheduler.address
@@ -595,7 +578,7 @@ class YarnCluster(object):
         workers = client.scheduler_info()['workers']
 
         n_workers = len(workers)
-        cores = sum(w[_NTHREADS_KEYWORD] for w in workers.values())
+        cores = sum(w['nthreads'] for w in workers.values())
         memory = sum(w['memory_limit'] for w in workers.values())
 
         text = """

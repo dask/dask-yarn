@@ -1,5 +1,3 @@
-from __future__ import division, print_function, absolute_import
-
 import pytest
 
 import skein
@@ -141,7 +139,7 @@ def test_cli_submit_with_args(tmpdir, conda_env, skein_client, capfd):
         fil.write(script)
 
     run_command('submit '
-                '--name test-cli-submit-and-status '
+                '--name test-cli-submit-with-args '
                 '--environment %s '
                 '--worker-count 0 '
                 '--scheduler-memory 256MiB '
@@ -181,7 +179,7 @@ def test_cli_submit_local(script_kind, final_status, searchtxt,
         fil.write(script)
 
     run_command('submit '
-                '--name test-cli-submit-and-status '
+                '--name test-cli-submit-local '
                 '--environment %s '
                 '--deploy-mode local '
                 '--worker-count 1 '
