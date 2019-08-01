@@ -17,10 +17,6 @@ source activate test-environment
 
 pip install conda-pack skein
 
-if [[ $1 == '2.7' ]]; then
-    pip install backports.weakref
-fi
-
 cd ~/dask-yarn
 pip install -v --no-deps .
 

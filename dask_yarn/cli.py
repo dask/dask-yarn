@@ -1,5 +1,3 @@
-from __future__ import print_function, division, absolute_import
-
 import argparse
 import os
 import shutil
@@ -7,21 +5,18 @@ import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
+from urllib.parse import urlparse
 
 import skein
 from skein.utils import format_table, humanize_timedelta
-from tornado import gen
 from tornado.ioloop import IOLoop, TimeoutError
 from distributed import Scheduler, Nanny
-from distributed.utils import ignoring
 from distributed.cli.utils import install_signal_handlers
 from distributed.proctitle import (enable_proctitle_on_children,
                                    enable_proctitle_on_current)
 
 from . import __version__
-from .compat import urlparse
-from .core import (_make_submit_specification, YarnCluster, _get_skein_client,
-                   _NTHREADS_KEYWORD)
+from .core import _make_submit_specification, YarnCluster, _get_skein_client
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -297,40 +292,29 @@ def scheduler():  # pragma: nocover
         limit = max(soft, hard // 2)
         resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
 
-    addr = 'tcp://'
-
     loop = IOLoop.current()
-
-    services = {}
-    bokeh = False
-    with ignoring(ImportError):
-        try:
-            from distributed.dashboard.scheduler import BokehScheduler
-        except ImportError:
-            # Old import location
-            from distributed.bokeh.scheduler import BokehScheduler
-        services[('bokeh', 0)] = (BokehScheduler, {})
-        bokeh = True
-
-    scheduler = Scheduler(loop=loop, services=services)
-    scheduler.start(addr)
-
+    scheduler = Scheduler(loop=loop, dashboard_address=("", 0))
     install_signal_handlers(loop)
 
-    # Set dask.dashboard before dask.scheduler since the YarnCluster object
-    # waits on dask.scheduler only
-    if bokeh:
-        bokeh_port = scheduler.services['bokeh'].port
-        bokeh_host = urlparse(scheduler.address).hostname
-        bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
+    def post_addresses():
+        # Set dask.dashboard before dask.scheduler since the YarnCluster object
+        # waits on dask.scheduler only
+        if "dashboard" in scheduler.services:
+            bokeh_port = scheduler.services['dashboard'].port
+            bokeh_host = urlparse(scheduler.address).hostname
+            bokeh_address = 'http://%s:%d' % (bokeh_host, bokeh_port)
+            app_client.kv['dask.dashboard'] = bokeh_address.encode()
+        app_client.kv['dask.scheduler'] = scheduler.address.encode()
 
-        app_client.kv['dask.dashboard'] = bokeh_address.encode()
-
-    app_client.kv['dask.scheduler'] = scheduler.address.encode()
+    async def run():
+        await scheduler
+        await loop.run_in_executor(None, post_addresses)
+        await scheduler.finished()
 
     try:
-        loop.start()
-        loop.close()
+        loop.run_sync(run)
+    except (KeyboardInterrupt, TimeoutError):
+        pass
     finally:
         scheduler.stop()
 
@@ -361,19 +345,16 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     loop = IOLoop.current()
 
     worker = Nanny(scheduler, loop=loop, memory_limit=memory_limit,
-                   worker_port=0, **{_NTHREADS_KEYWORD: nthreads})
+                   worker_port=0, nthreads=nthreads)
 
-    @gen.coroutine
-    def close(signalnum):
-        worker._close(timeout=2)
+    async def cleanup():
+        await worker.close(timeout=2)
 
-    install_signal_handlers(loop, cleanup=close)
+    install_signal_handlers(loop, cleanup=cleanup)
 
-    @gen.coroutine
-    def run():
-        yield worker._start(None)
-        while worker.status != 'closed':
-            yield gen.sleep(0.2)
+    async def run():
+        await worker
+        await worker.finished()
 
     try:
         loop.run_sync(run)
