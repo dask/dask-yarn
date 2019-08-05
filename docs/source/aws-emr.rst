@@ -126,8 +126,8 @@ environment (see :doc:`environments` for more information).
     from dask_yarn import YarnCluster
     from dask.distributed import Client
 
-    # Create a cluster in local deploy mode, to have access to the dashboard
-    cluster = YarnCluster(deploy_mode='local')
+    # Create a cluster
+    cluster = YarnCluster()
 
     # Connect to the cluster
     client = Client(cluster)
@@ -153,9 +153,8 @@ provided graphical interface to change the cluster size.
 .. image:: /_images/cluster-widget.png
     :alt: Cluster widget in a Jupyter Notebook
 
-If you used our bootstrap action, and start your cluster with
-``deploy_mode='local'``, the `dask dashboard`_ will also be available, and the
-link included in the cluster widget above.
+If you used our bootstrap action, the `dask dashboard`_ will also be available,
+and the link included in the cluster widget above.
 
 
 Shutdown the EMR Cluster
