@@ -95,24 +95,22 @@ conda update conda -y
 # We install a few packages by default, and allow users to extend this list
 # with a CLI flag:
 #
-# - dask-yarn >= 0.4.1, for deploying Dask on YARN.
+# - dask-yarn >= 0.7.0, for deploying Dask on YARN.
 # - pyarrow for working with hdfs, parquet, ORC, etc...
 # - s3fs for access to s3
-# - nomkl to minimize environment size
 # - conda-pack for packaging the environment for distribution
+# - ensure tornado 5, since tornado 6 doesn't work with jupyter-server-proxy
 # -----------------------------------------------------------------------------
 echo "Installing base packages"
 conda install \
--c defaults \
 -c conda-forge \
 -y \
 -q \
-python=3.6 \
-dask-yarn>=0.4.1 \
+dask-yarn>=0.7.0 \
 pyarrow \
 s3fs \
-nomkl \
 conda-pack \
+tornado=5 \
 $EXTRA_CONDA_PACKAGES
 
 
@@ -137,10 +135,12 @@ conda list
 # few things easier:
 #
 # - Configure the cluster's dashboard link to show the proxied version through
-#   jupyter nbserverproxy. This allows access to the dashboard with only an ssh
+#   jupyter-server-proxy. This allows access to the dashboard with only an ssh
 #   tunnel to the notebook.
 #
 # - Specify the pre-packaged python environment, so users don't have to
+#
+# - Set the default deploy-mode to local, so the dashboard proxying works
 #
 # - Specify the location of the native libhdfs library so pyarrow can find it
 #   on the workers and the client (if submitting applications).
@@ -154,6 +154,7 @@ distributed:
 
 yarn:
   environment: /home/hadoop/environment.tar.gz
+  deploy-mode: local
 
   worker:
     env:
@@ -185,19 +186,17 @@ fi
 #
 # - notebook: the Jupyter Notebook Server
 # - ipywidgets: used to provide an interactive UI for the YarnCluster objects
-# - nbserverproxy: used to proxy the dask dashboard through the notebook server
+# - jupyter-server-proxy: used to proxy the dask dashboard through the notebook server
 # -----------------------------------------------------------------------------
 if [[ "$JUPYTER" == "true" ]]; then
     echo "Installing Jupyter"
     conda install \
-    -c defaults \
     -c conda-forge \
     -y \
     -q \
-    python=3.6 \
     notebook \
     ipywidgets \
-    nbserverproxy
+    jupyter-server-proxy \
 fi
 
 
