@@ -196,7 +196,7 @@ if [[ "$JUPYTER" == "true" ]]; then
     -q \
     notebook \
     ipywidgets \
-    jupyter-server-proxy \
+    jupyter-server-proxy
 fi
 
 
