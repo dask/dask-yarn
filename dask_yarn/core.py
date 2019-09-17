@@ -151,6 +151,8 @@ def _make_specification(**kwargs):
     worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
     worker_memory = parse_memory(lookup(kwargs, 'worker_memory', 'yarn.worker.memory'),
                                  'worker')
+    scheduler_port = lookup(kwargs, 'scheduler_port', 'yarn.scheduler.port')
+    dashboard_port = lookup(kwargs, 'dashboard_port', 'yarn.scheduler.dashboard_port')
 
     services = {}
 
@@ -268,6 +270,11 @@ class YarnCluster(object):
         The amount of memory to allocate to the scheduler. Accepts a unit
         suffix (e.g. '2 GiB' or '4096 MiB'). Will be rounded up to the nearest
         MiB.
+    scheduler_port : int, optional
+        Specific port to use for the scheduler. If None, an arbitrary open port will be chosen
+    dashboard_address : str, optional
+        Specific address to use for the dashboard (e.g. '0.0.0.0:8787').
+        If None, an arbitrary open port will be chosen on the local host, 0.0.0.0
     deploy_mode : {'remote', 'local'}, optional
         The deploy mode to use. If ``'remote'``, the scheduler will be deployed
         in a YARN container. If ``'local'``, the scheduler will run locally,
@@ -299,12 +306,17 @@ class YarnCluster(object):
                  worker_env=None,
                  scheduler_vcores=None,
                  scheduler_memory=None,
+                 scheduler_port=None,
+                 dashboard_address=None,
                  deploy_mode=None,
                  name=None,
                  queue=None,
                  tags=None,
                  user=None,
                  skein_client=None):
+
+        self._scheduler_port = scheduler_port
+        self._dashboard_address = dashboard_address
 
         spec = _make_specification(environment=environment,
                                    n_workers=n_workers,
@@ -320,7 +332,8 @@ class YarnCluster(object):
                                    tags=tags,
                                    user=user)
 
-        self._start_cluster(spec, skein_client)
+        self._start_cluster(spec,
+                            skein_client)
 
     @cached_property
     def dashboard_link(self):
@@ -331,7 +344,11 @@ class YarnCluster(object):
         return format_dashboard_link(dashboard.hostname, dashboard.port)
 
     @classmethod
-    def from_specification(cls, spec, skein_client=None):
+    def from_specification(cls,
+                           spec,
+                           skein_client=None,
+                           scheduler_port=None,
+                           dashboard_address=None):
         """Start a dask cluster from a skein specification.
 
         Parameters
@@ -342,8 +359,16 @@ class YarnCluster(object):
             defined, a scheduler will be started locally.
         skein_client : skein.Client, optional
             The ``skein.Client`` to use. If not provided, one will be started.
+        scheduler_port : int, optional
+            Specific port to use for the scheduler. If None, an arbitrary open port will be chosen
+        dashboard_address : str, optional
+            Specific address to use for the dashboard (e.g. '0.0.0.0:8787').
+            If None, an arbitrary open port will be chosen on the local host, 0.0.0.0
         """
         self = super(YarnCluster, cls).__new__(cls)
+        self._scheduler_port = scheduler_port
+        self._dashboard_address = dashboard_address
+
         if isinstance(spec, dict):
             spec = skein.ApplicationSpec.from_dict(spec)
         elif isinstance(spec, str):
@@ -365,10 +390,12 @@ class YarnCluster(object):
 
         if 'dask.scheduler' not in spec.services:
             # deploy_mode == 'local'
+
             self._local_cluster = LocalCluster(n_workers=0,
                                                host='0.0.0.0',
-                                               scheduler_port=0,
-                                               dashboard_address="0.0.0.0:0")
+                                               scheduler_port=self._scheduler_port or 0,
+                                               dashboard_address=self._dashboard_address or "0.0.0.0:0")
+
             scheduler = self._local_cluster.scheduler
 
             scheduler_address = scheduler.address
