@@ -151,9 +151,6 @@ def _make_specification(**kwargs):
     worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
     worker_memory = parse_memory(lookup(kwargs, 'worker_memory', 'yarn.worker.memory'),
                                  'worker')
-    scheduler_port = lookup(kwargs, 'scheduler_port', 'yarn.scheduler.port')
-    dashboard_port = lookup(kwargs, 'dashboard_port', 'yarn.scheduler.dashboard_port')
-
     services = {}
 
     files, build_script = _files_and_build_script(environment)

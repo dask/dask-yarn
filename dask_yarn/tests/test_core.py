@@ -19,9 +19,13 @@ except Exception:
 
 
 @pytest.mark.parametrize('deploy_mode', ['remote', 'local'])
-def test_basic(deploy_mode, skein_client, conda_env):
+@pytest.mark.parametrize('scheduler_port', [None, 8786])
+@pytest.mark.parametrize('dashboard_address', [None, '0.0.0.0:8787'])
+def test_basic(deploy_mode, scheduler_port, dashboard_address, skein_client, conda_env):
     with YarnCluster(environment=conda_env,
                      deploy_mode=deploy_mode,
+                     scheduler_port=scheduler_port,
+                     dashboard_address=dashboard_address,
                      worker_memory='512 MiB',
                      scheduler_memory='512 MiB',
                      name='test-basic',
@@ -31,6 +35,11 @@ def test_basic(deploy_mode, skein_client, conda_env):
 
         if bokeh_installed:
             assert cluster.dashboard_link is not None
+            if dashboard_address is not None:
+                assert cluster.dashboard_link == 'http://0.0.0.0:8787/status'
+
+        if scheduler_port is not None:
+            assert cluster.scheduler_address == 'tcp://0.0.0.0:8786'
 
         # Scale up
         cluster.scale(2)
