@@ -151,6 +151,7 @@ def _make_specification(**kwargs):
     worker_vcores = lookup(kwargs, 'worker_vcores', 'yarn.worker.vcores')
     worker_memory = parse_memory(lookup(kwargs, 'worker_memory', 'yarn.worker.memory'),
                                  'worker')
+
     services = {}
 
     files, build_script = _files_and_build_script(environment)
