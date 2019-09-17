@@ -39,7 +39,7 @@ def test_basic(deploy_mode, scheduler_port, dashboard_address, skein_client, con
                 assert cluster.dashboard_link == 'http://0.0.0.0:8787/status'
 
         if scheduler_port is not None:
-            assert cluster.scheduler_address == 'tcp://0.0.0.0:8786'
+            assert cluster.scheduler_address.endswith("8786")
 
         # Scale up
         cluster.scale(2)
