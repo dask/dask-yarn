@@ -2,3 +2,4 @@ dask>=2.2.0
 distributed>=2.2.0
 skein>=0.5.0
 grpcio>=1.14.0
+asn1crypto==0.24.0
