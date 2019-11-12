@@ -32,10 +32,12 @@ before_install:
   - curl -L https://github.com/docker/compose/releases/download/1.19.0/docker-compose-`uname -s`-`uname -m` > docker-compose
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
-    # Install the test cluster
+  # Install the test cluster
   - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
-    # Start the test cluster
+  # Start the test cluster
   - htcluster startup --mount .:dask-yarn --config $CLUSTER_CONFIG
+  # No-op to ensure fixuid runs in a more robust way
+  - htcluster exec -- pwd
 
 install:
   - htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
