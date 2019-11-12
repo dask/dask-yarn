@@ -8,6 +8,7 @@ conda create -n test-environment \
     dask \
     distributed \
     flake8 \
+    black \
     nomkl \
     pytest \
     python=$1 \
