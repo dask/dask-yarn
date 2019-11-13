@@ -1,24 +1,24 @@
+import asyncio
 import math
 import os
+import sys
 import warnings
 import weakref
 from contextlib import contextmanager
 from urllib.parse import urlparse
 
 import dask
-from dask.distributed import get_client, LocalCluster
-from distributed.utils import format_bytes, PeriodicCallback, log_errors
+from distributed.core import rpc
+from distributed.scheduler import Scheduler
+from distributed.utils import (
+    format_bytes,
+    log_errors,
+    LoopRunner,
+    format_dashboard_link,
+)
 
 import skein
 from skein.utils import cached_property
-
-try:
-    from distributed.utils import format_dashboard_link
-except ImportError:
-
-    def format_dashboard_link(host, port):
-        template = dask.config.get("distributed.dashboard.link")
-        return template.format(host=host, port=port, **os.environ)
 
 
 _memory_error = """Memory specification for the `{0}` take string parameters
@@ -29,6 +29,38 @@ Perhaps you meant: "{1} MiB"
 """
 
 _one_MiB = 2 ** 20
+
+
+_widget_status_template = """
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table style="text-align: right;">
+    <tr><th>Workers</th> <td>%d</td></tr>
+    <tr><th>Cores</th> <td>%d</td></tr>
+    <tr><th>Memory</th> <td>%s</td></tr>
+</table>
+</div>
+"""
+
+
+async def cancel_task(task):
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 class DaskYarnError(skein.SkeinError):
@@ -77,9 +109,6 @@ def _get_skein_client(skein_client=None, security=None):
             warnings.simplefilter("ignore")
             return skein.Client(security=security)
     return skein_client
-
-
-# exposed for testing only
 
 
 def _files_and_build_script(environment):
@@ -283,6 +312,12 @@ class YarnCluster(object):
         the YARN documentation for more information.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
+    asynchronous : bool, optional
+        If true, starts the cluster in asynchronous mode, where it can be used
+        in other async code.
+    loop : IOLoop, optional
+        The IOLoop instance to use. Defaults to the current loop in
+        asynchronous mode, otherwise a background loop is started.
 
     Examples
     --------
@@ -306,9 +341,10 @@ class YarnCluster(object):
         tags=None,
         user=None,
         skein_client=None,
+        asynchronous=False,
+        loop=None,
     ):
-
-        spec = _make_specification(
+        self.spec = _make_specification(
             environment=environment,
             n_workers=n_workers,
             worker_vcores=worker_vcores,
@@ -323,19 +359,14 @@ class YarnCluster(object):
             tags=tags,
             user=user,
         )
-
-        self._start_cluster(spec, skein_client)
-
-    @cached_property
-    def dashboard_link(self):
-        """Link to the dask dashboard. None if dashboard isn't running"""
-        if self._dashboard_address is None:
-            return None
-        dashboard = urlparse(self._dashboard_address)
-        return format_dashboard_link(dashboard.hostname, dashboard.port)
+        self._init_common(
+            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+        )
+        if not self.asynchronous:
+            self._sync(self._start_internal())
 
     @classmethod
-    def from_specification(cls, spec, skein_client=None):
+    def from_specification(cls, spec, skein_client=None, asynchronous=False, loop=None):
         """Start a dask cluster from a skein specification.
 
         Parameters
@@ -357,64 +388,21 @@ class YarnCluster(object):
                 "spec must be an ApplicationSpec, dict, or path, "
                 "got %r" % type(spec).__name__
             )
-        self._start_cluster(spec, skein_client)
-        return self
-
-    def _start_cluster(self, spec, skein_client=None):
-        """Start the cluster and initialize state"""
-
         if "dask.worker" not in spec.services:
             raise ValueError(
-                "Provided Skein specification must include a " "'dask.worker' service"
+                "Provided Skein specification must include a 'dask.worker' service"
             )
 
-        skein_client = _get_skein_client(skein_client)
-
-        if "dask.scheduler" not in spec.services:
-            # deploy_mode == 'local'
-            self._local_cluster = LocalCluster(
-                n_workers=0,
-                host="0.0.0.0",
-                scheduler_port=0,
-                dashboard_address="0.0.0.0:0",
-            )
-            scheduler = self._local_cluster.scheduler
-
-            scheduler_address = scheduler.address
-            for k in ["dashboard", "bokeh"]:
-                if k in scheduler.services:
-                    dashboard_port = scheduler.services[k].port
-                    dashboard_host = urlparse(scheduler_address).hostname
-                    dashboard_address = "http://%s:%d" % (
-                        dashboard_host,
-                        dashboard_port,
-                    )
-                    break
-            else:
-                dashboard_address = None
-
-            with submit_and_handle_failures(skein_client, spec) as app:
-                app.kv["dask.scheduler"] = scheduler_address.encode()
-                if dashboard_address is not None:
-                    app.kv["dask.dashboard"] = dashboard_address.encode()
-        else:
-            # deploy_mode == 'remote'
-            with submit_and_handle_failures(skein_client, spec) as app:
-                scheduler_address = app.kv.wait("dask.scheduler").decode()
-                dashboard_address = app.kv.get("dask.dashboard")
-                if dashboard_address is not None:
-                    dashboard_address = dashboard_address.decode()
-
-        # Ensure application gets cleaned up
-        self._finalizer = weakref.finalize(self, app.shutdown)
-
-        self.scheduler_address = scheduler_address
-        self._dashboard_address = dashboard_address
-        self.app_id = app.id
-        self.application_client = app
+        self.spec = spec
+        self._init_common(
+            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+        )
+        if not self.asynchronous:
+            self._sync(self._start_internal())
+        return self
 
     @classmethod
-    def from_current(cls):
+    def from_current(cls, asynchronous=False, loop=None):
         """Connect to an existing ``YarnCluster`` from inside the cluster.
 
         Returns
@@ -434,11 +422,18 @@ class YarnCluster(object):
             app = skein.ApplicationClient(app_address, app_id, security=security)
         else:
             app = skein.ApplicationClient.from_current()
-        self._connect_existing(app)
+
+        self.spec = None
+        self.application_client = app
+        self._init_common(asynchronous=asynchronous, loop=loop)
+        if not self.asynchronous:
+            self._sync(self._start_internal())
         return self
 
     @classmethod
-    def from_application_id(cls, app_id, skein_client=None):
+    def from_application_id(
+        cls, app_id, skein_client=None, asynchronous=False, loop=None
+    ):
         """Connect to an existing ``YarnCluster`` with a given application id.
 
         Parameters
@@ -455,36 +450,210 @@ class YarnCluster(object):
         self = super(YarnCluster, cls).__new__(cls)
         skein_client = _get_skein_client(skein_client)
         app = skein_client.connect(app_id)
-        self._connect_existing(app)
+
+        self.spec = None
+        self.application_client = app
+        self._init_common(
+            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+        )
+        if not self.asynchronous:
+            self._sync(self._start_internal())
         return self
 
-    def _connect_existing(self, app):
-        spec = app.get_specification()
-        if "dask.worker" not in spec.services:
-            raise ValueError("%r is not a valid dask cluster" % app.id)
+    def _init_common(self, asynchronous=False, loop=None, skein_client=None):
+        self.scheduler_info = {}
+        self.requested = set()
+        self._scheduler = None
+        self.scheduler_comm = None
+        self._watch_worker_status_task = None
+        self._start_task = None
+        self._stop_task = None
+        self._finalizer = None
+        self._skein_client = skein_client
+        self._asynchronous = asynchronous
+        self._loop_runner = LoopRunner(loop=loop, asynchronous=asynchronous)
+        self._loop_runner.start()
 
-        scheduler_address = app.kv.wait("dask.scheduler").decode()
-        dashboard_address = app.kv.get("dask.dashboard")
+    def _start_cluster(self):
+        """Start the cluster and initialize state"""
+
+        skein_client = _get_skein_client(self._skein_client)
+
+        if "dask.scheduler" not in self.spec.services:
+            # deploy_mode == 'local'
+            scheduler_address = self._scheduler.address
+            for k in ["dashboard", "bokeh"]:
+                if k in self._scheduler.services:
+                    dashboard_port = self._scheduler.services[k].port
+                    dashboard_host = urlparse(scheduler_address).hostname
+                    dashboard_address = "http://%s:%d" % (
+                        dashboard_host,
+                        dashboard_port,
+                    )
+                    break
+            else:
+                dashboard_address = None
+
+            with submit_and_handle_failures(skein_client, self.spec) as app:
+                app.kv["dask.scheduler"] = scheduler_address.encode()
+                if dashboard_address is not None:
+                    app.kv["dask.dashboard"] = dashboard_address.encode()
+        else:
+            # deploy_mode == 'remote'
+            with submit_and_handle_failures(skein_client, self.spec) as app:
+                scheduler_address = app.kv.wait("dask.scheduler").decode()
+                dashboard_address = app.kv.get("dask.dashboard")
+                if dashboard_address is not None:
+                    dashboard_address = dashboard_address.decode()
+
+        # Ensure application gets cleaned up
+        self._finalizer = weakref.finalize(self, app.shutdown)
+
+        self.scheduler_address = scheduler_address
+        self._dashboard_address = dashboard_address
+        self.application_client = app
+
+    def _connect_existing(self):
+        spec = self.application_client.get_specification()
+        if "dask.worker" not in spec.services:
+            raise ValueError("%r is not a valid dask cluster" % self.app_id)
+
+        scheduler_address = self.application_client.kv.wait("dask.scheduler").decode()
+        dashboard_address = self.application_client.kv.get("dask.dashboard")
         if dashboard_address is not None:
             dashboard_address = dashboard_address.decode()
 
-        self.app_id = app.id
-        self.application_client = app
+        self.spec = spec
         self.scheduler_address = scheduler_address
         self._dashboard_address = dashboard_address
+
+    async def _start_internal(self):
+        if self._start_task is None:
+            self._start_task = asyncio.ensure_future(self._start_async())
+        try:
+            await self._start_task
+        except BaseException:
+            # On exception, cleanup
+            await self._stop_internal()
+            raise
+        return self
+
+    async def _start_async(self):
+        if self.spec is not None:
+            # Start a new cluster
+            if "dask.scheduler" not in self.spec.services:
+                self._scheduler = Scheduler(
+                    host="0.0.0.0",
+                    port=0,
+                    dashboard_address="0.0.0.0:0",
+                    loop=self.loop,
+                )
+                await self._scheduler
+            else:
+                self._scheduler = None
+            await self.loop.run_in_executor(None, self._start_cluster)
+        else:
+            # Connect to an existing cluster
+            await self.loop.run_in_executor(None, self._connect_existing)
+
+        self.scheduler_comm = rpc(self.scheduler_address)
+        comm = None
+        try:
+            comm = await self.scheduler_comm.live_comm()
+            await comm.write({"op": "subscribe_worker_status"})
+            self.scheduler_info = await comm.read()
+            workers = self.scheduler_info.get("workers", {})
+            self.requested.update(w["name"] for w in workers.values())
+            self._watch_worker_status_task = asyncio.ensure_future(
+                self._watch_worker_status(comm)
+            )
+        except Exception:
+            if comm is not None:
+                await comm.close()
+
+    async def _stop_internal(self, status="SUCCEEDED", diagnostics=None):
+        if self._stop_task is None:
+            self._stop_task = asyncio.ensure_future(
+                self._stop_async(status=status, diagnostics=diagnostics)
+            )
+        await self._stop_task
+
+    async def _stop_async(self, status="SUCCEEDED", diagnostics=None):
+        if self._start_task is not None:
+            if not self._start_task.done():
+                # We're still starting, cancel task
+                await cancel_task(self._start_task)
+            self._start_task = None
+
+        if self._watch_worker_status_task is not None:
+            await cancel_task(self._watch_worker_status_task)
+            self._watch_worker_status_task = None
+
+        if self.scheduler_comm is not None:
+            self.scheduler_comm.close_rpc()
+            self.scheduler_comm = None
+
+        await self.loop.run_in_executor(
+            None, lambda: self._stop_sync(status=status, diagnostics=diagnostics)
+        )
+
+        if self._scheduler is not None:
+            await self._scheduler.close()
+            self._scheduler = None
+
+    def _stop_sync(self, status="SUCCEEDED", diagnostics=None):
+        if self._finalizer is not None and self._finalizer.peek() is not None:
+            self.application_client.shutdown(status=status, diagnostics=diagnostics)
+            self._finalizer.detach()  # don't run the finalizer later
         self._finalizer = None
+
+    def __await__(self):
+        return self.__aenter__().__await__()
+
+    async def __aenter__(self):
+        return await self._start_internal()
+
+    async def __aexit__(self, typ, value, traceback):
+        await self._stop_internal()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 
     def __repr__(self):
         return "YarnCluster<%s>" % self.app_id
 
-    def _dask_client(self):
-        if hasattr(self, "_dask_client_ref"):
-            client = self._dask_client_ref()
-            if client is not None:
-                return client
-        client = get_client(address=self.scheduler_address)
-        self._dask_client_ref = weakref.ref(client)
-        return client
+    @property
+    def loop(self):
+        return self._loop_runner.loop
+
+    @property
+    def app_id(self):
+        return self.application_client.id
+
+    @property
+    def asynchronous(self):
+        return self._asynchronous
+
+    def _sync(self, task):
+        if self.asynchronous:
+            return task
+        future = asyncio.run_coroutine_threadsafe(task, self.loop.asyncio_loop)
+        try:
+            return future.result()
+        except BaseException:
+            future.cancel()
+            raise
+
+    @cached_property
+    def dashboard_link(self):
+        """Link to the dask dashboard. None if dashboard isn't running"""
+        if self._dashboard_address is None:
+            return None
+        dashboard = urlparse(self._dashboard_address)
+        return format_dashboard_link(dashboard.hostname, dashboard.port)
 
     def shutdown(self, status="SUCCEEDED", diagnostics=None):
         """Shutdown the application.
@@ -498,13 +667,14 @@ class YarnCluster(object):
             Can be seen in the YARN Web UI for completed applications under
             "diagnostics". If not provided, a default will be used.
         """
-        if self._finalizer is not None and self._finalizer.peek() is not None:
-            self.application_client.shutdown(status=status, diagnostics=diagnostics)
-            self._finalizer.detach()  # don't call shutdown later
-            # Shutdown in local deploy_mode
-            if hasattr(self, "_local_cluster"):
-                self._local_cluster.close()
-                del self._local_cluster
+        if self.asynchronous:
+            return self._stop_internal(status=status, diagnostics=diagnostics)
+        if self.loop.asyncio_loop.is_running() and not sys.is_finalizing():
+            self._sync(self._stop_internal(status=status, diagnostics=diagnostics))
+        else:
+            # Always run this!
+            self._stop_sync(status=status, diagnostics=diagnostics)
+        self._loop_runner.stop()
 
     def close(self, **kwargs):
         """Close this cluster. An alias for ``shutdown``.
@@ -513,20 +683,43 @@ class YarnCluster(object):
         --------
         shutdown
         """
-        self.shutdown(**kwargs)
+        return self.shutdown(**kwargs)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
+    def __del__(self):
+        if not hasattr(self, "_loop_runner"):
+            return
+        if self.asynchronous:
+            # No del for async mode
+            return
         self.close()
+
+    @property
+    def plan(self):
+        return self.requested
+
+    @property
+    def observed(self):
+        return {w["name"] for w in self.scheduler_info["workers"].values()}
+
+    async def _workers(self):
+        return await self.loop.run_in_executor(
+            None,
+            lambda: self.application_client.get_containers(services=["dask.worker"]),
+        )
 
     def workers(self):
         """A list of all currently running worker containers."""
-        return self.application_client.get_containers(services=["dask.worker"])
+        return self._sync(self._workers())
 
-    def scale_up(self, n, workers=None):
-        """Ensure there are atleast n dask workers available for this cluster.
+    async def _scale_up(self, n):
+        if n > len(self.requested):
+            containers = await self.loop.run_in_executor(
+                None, lambda: self.application_client.scale("dask.worker", n),
+            )
+            self.requested.update(c.id for c in containers)
+
+    def scale_up(self, n):
+        """Ensure there are at least n dask workers available for this cluster.
 
         No-op if ``n`` is less than the current number of workers.
 
@@ -534,10 +727,21 @@ class YarnCluster(object):
         --------
         >>> cluster.scale_up(20)  # ask for twenty workers
         """
-        if workers is None:
-            workers = self.workers()
-        if n > len(workers):
-            self.application_client.scale("dask.worker", n)
+        return self._sync(self._scale_up(n))
+
+    async def _scale_down(self, workers):
+        await self.scheduler_comm.retire_workers(workers=list(workers))
+
+        def _kill_containers():
+            for c in workers:
+                try:
+                    self.application_client.kill_container(c)
+                except ValueError:
+                    pass
+
+        await self.loop.run_in_executor(
+            None, _kill_containers,
+        )
 
     def scale_down(self, workers):
         """Retire the selected workers.
@@ -547,15 +751,19 @@ class YarnCluster(object):
         workers: list
             List of addresses of workers to close.
         """
-        self._dask_client().retire_workers(workers)
+        return self._sync(self._scale_down)
 
-    def _select_workers_to_close(self, n):
-        client = self._dask_client()
-        worker_info = client.scheduler_info()["workers"]
-        # Sort workers by memory used
-        workers = sorted((v["metrics"]["memory"], k) for k, v in worker_info.items())
-        # Return just the ips
-        return [w[1] for w in workers[:n]]
+    async def _scale(self, n):
+        if n >= len(self.requested):
+            return await self._scale_up(n)
+        else:
+            n_to_delete = len(self.requested) - n
+            pending = list(self.requested - self.observed)
+            running = list(self.observed.difference(pending))
+            to_close = pending[:n_to_delete]
+            to_close.extend(running[: n_to_delete - len(to_close)])
+            await self._scale_down(to_close)
+            self.requested.difference_update(to_close)
 
     def scale(self, n):
         """Scale cluster to n workers.
@@ -569,59 +777,50 @@ class YarnCluster(object):
         --------
         >>> cluster.scale(10)  # scale cluster to ten workers
         """
-        workers = self.workers()
-        if n >= len(workers):
-            return self.scale_up(n, workers=workers)
-        else:
-            n_to_delete = len(workers) - n
-            # Before trying to close running workers, check if there are any
-            # pending containers and kill those first.
-            pending = [w for w in workers if w.state in ("waiting", "requested")]
+        return self._sync(self._scale(n))
 
-            for c in pending[:n_to_delete]:
-                self.application_client.kill_container(c.id)
-                n_to_delete -= 1
-
-            if n_to_delete:
-                to_close = self._select_workers_to_close(n_to_delete)
-                self.scale_down(to_close)
+    async def _watch_worker_status(self, comm):
+        # We don't want to hold on to a ref to self, otherwise this will
+        # leave a dangling reference and prevent garbage collection.
+        ref_self = weakref.ref(self)
+        self = None
+        try:
+            while True:
+                try:
+                    msgs = await comm.read()
+                except OSError:
+                    break
+                try:
+                    self = ref_self()
+                    if self is None:
+                        break
+                    for op, msg in msgs:
+                        if op == "add":
+                            workers = msg.pop("workers")
+                            self.scheduler_info["workers"].update(workers)
+                            self.scheduler_info.update(msg)
+                            self.requested.update(w["name"] for w in workers.values())
+                        elif op == "remove":
+                            del self.scheduler_info["workers"][msg]
+                            self.requested.discard(msg)
+                    if hasattr(self, "_status_widget"):
+                        self._status_widget.value = self._widget_status()
+                finally:
+                    self = None
+        finally:
+            await comm.close()
 
     def _widget_status(self):
-        client = self._dask_client()
+        try:
+            workers = self.scheduler_info["workers"]
+        except KeyError:
+            return None
+        else:
+            n_workers = len(workers)
+            cores = sum(w["nthreads"] for w in workers.values())
+            memory = sum(w["memory_limit"] for w in workers.values())
 
-        workers = client.scheduler_info()["workers"]
-
-        n_workers = len(workers)
-        cores = sum(w["nthreads"] for w in workers.values())
-        memory = sum(w["memory_limit"] for w in workers.values())
-
-        text = """
-<div>
-  <style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-  </style>
-  <table style="text-align: right;">
-    <tr><th>Workers</th> <td>%d</td></tr>
-    <tr><th>Cores</th> <td>%d</td></tr>
-    <tr><th>Memory</th> <td>%s</td></tr>
-  </table>
-</div>
-""" % (
-            n_workers,
-            cores,
-            format_bytes(memory),
-        )
-        return text
+            return _widget_status_template % (n_workers, cores, format_bytes(memory))
 
     def _widget(self):
         """ Create IPython widget for display within a notebook """
@@ -630,9 +829,14 @@ class YarnCluster(object):
         except AttributeError:
             pass
 
-        from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML
+        if self.asynchronous:
+            return None
 
-        client = self._dask_client()
+        try:
+            from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML
+        except ImportError:
+            self._cached_widget = None
+            return None
 
         layout = Layout(width="150px")
 
@@ -652,23 +856,40 @@ class YarnCluster(object):
 
         if self.dashboard_link is not None:
             link = HTML(
-                '<p><b>Dashboard: </b><a href="%s" target="_blank">%s'
-                "</a></p>\n" % (self.dashboard_link, self.dashboard_link)
+                '<p><b>Dashboard: </b><a href="{0}" target="_blank">{0}'
+                "</a></p>\n".format(self.dashboard_link)
             )
             elements.append(link)
 
         self._cached_widget = box = VBox(elements)
-
-        def update():
-            status.value = self._widget_status()
-
-        pc = PeriodicCallback(update, 500, io_loop=client.loop)
-        pc.start()
+        self._status_widget = status
 
         return box
 
     def _ipython_display_(self, **kwargs):
-        try:
-            return self._widget()._ipython_display_(**kwargs)
-        except ImportError:
-            print(self)
+        widget = self._widget()
+        if widget is not None:
+            return widget._ipython_display_(**kwargs)
+        else:
+            from IPython.display import display
+
+            data = {"text/plain": repr(self), "text/html": self._repr_html_()}
+            display(data, raw=True)
+
+    def _repr_html_(self):
+        if self.dashboard_link is not None:
+            dashboard = "<a href='{0}' target='_blank'>{0}</a>".format(
+                self.dashboard_link
+            )
+        else:
+            dashboard = "Not Available"
+        return (
+            "<div style='background-color: #f2f2f2; display: inline-block; "
+            "padding: 10px; border: 1px solid #999999;'>\n"
+            "  <h3>GatewayCluster</h3>\n"
+            "  <ul>\n"
+            "    <li><b>Name: </b>{name}\n"
+            "    <li><b>Dashboard: </b>{dashboard}\n"
+            "  </ul>\n"
+            "</div>\n"
+        ).format(name=self.name, dashboard=dashboard)

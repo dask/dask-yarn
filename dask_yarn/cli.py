@@ -460,6 +460,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
         memory_limit=memory_limit,
         worker_port=0,
         nthreads=nthreads,
+        name=skein.properties.container_id,
     )
 
     async def cleanup():

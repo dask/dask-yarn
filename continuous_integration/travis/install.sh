@@ -16,7 +16,7 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install conda-pack skein
+pip install conda-pack skein pytest-asyncio
 
 cd ~/dask-yarn
 pip install -v --no-deps .
