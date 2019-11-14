@@ -344,7 +344,7 @@ class YarnCluster(object):
         asynchronous=False,
         loop=None,
     ):
-        self.spec = _make_specification(
+        spec = _make_specification(
             environment=environment,
             n_workers=n_workers,
             worker_vcores=worker_vcores,
@@ -360,10 +360,8 @@ class YarnCluster(object):
             user=user,
         )
         self._init_common(
-            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+            spec=spec, asynchronous=asynchronous, loop=loop, skein_client=skein_client
         )
-        if not self.asynchronous:
-            self._sync(self._start_internal())
 
     @classmethod
     def from_specification(cls, spec, skein_client=None, asynchronous=False, loop=None):
@@ -377,6 +375,12 @@ class YarnCluster(object):
             defined, a scheduler will be started locally.
         skein_client : skein.Client, optional
             The ``skein.Client`` to use. If not provided, one will be started.
+        asynchronous : bool, optional
+            If true, starts the cluster in asynchronous mode, where it can be
+            used in other async code.
+        loop : IOLoop, optional
+            The IOLoop instance to use. Defaults to the current loop in
+            asynchronous mode, otherwise a background loop is started.
         """
         self = super(YarnCluster, cls).__new__(cls)
         if isinstance(spec, dict):
@@ -393,17 +397,23 @@ class YarnCluster(object):
                 "Provided Skein specification must include a 'dask.worker' service"
             )
 
-        self.spec = spec
         self._init_common(
-            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+            spec=spec, asynchronous=asynchronous, loop=loop, skein_client=skein_client
         )
-        if not self.asynchronous:
-            self._sync(self._start_internal())
         return self
 
     @classmethod
     def from_current(cls, asynchronous=False, loop=None):
         """Connect to an existing ``YarnCluster`` from inside the cluster.
+
+        Parameters
+        ----------
+        asynchronous : bool, optional
+            If true, starts the cluster in asynchronous mode, where it can be
+            used in other async code.
+        loop : IOLoop, optional
+            The IOLoop instance to use. Defaults to the current loop in
+            asynchronous mode, otherwise a background loop is started.
 
         Returns
         -------
@@ -423,11 +433,7 @@ class YarnCluster(object):
         else:
             app = skein.ApplicationClient.from_current()
 
-        self.spec = None
-        self.application_client = app
-        self._init_common(asynchronous=asynchronous, loop=loop)
-        if not self.asynchronous:
-            self._sync(self._start_internal())
+        self._init_common(application_client=app, asynchronous=asynchronous, loop=loop)
         return self
 
     @classmethod
@@ -442,6 +448,12 @@ class YarnCluster(object):
             The existing cluster's application id.
         skein_client : skein.Client
             The ``skein.Client`` to use. If not provided, one will be started.
+        asynchronous : bool, optional
+            If true, starts the cluster in asynchronous mode, where it can be
+            used in other async code.
+        loop : IOLoop, optional
+            The IOLoop instance to use. Defaults to the current loop in
+            asynchronous mode, otherwise a background loop is started.
 
         Returns
         -------
@@ -451,16 +463,24 @@ class YarnCluster(object):
         skein_client = _get_skein_client(skein_client)
         app = skein_client.connect(app_id)
 
-        self.spec = None
-        self.application_client = app
         self._init_common(
-            asynchronous=asynchronous, loop=loop, skein_client=skein_client
+            application_client=app,
+            asynchronous=asynchronous,
+            loop=loop,
+            skein_client=skein_client,
         )
-        if not self.asynchronous:
-            self._sync(self._start_internal())
         return self
 
-    def _init_common(self, asynchronous=False, loop=None, skein_client=None):
+    def _init_common(
+        self,
+        spec=None,
+        application_client=None,
+        asynchronous=False,
+        loop=None,
+        skein_client=None,
+    ):
+        self.spec = spec
+        self.application_client = application_client
         self.scheduler_info = {}
         self.requested = set()
         self._scheduler = None
@@ -473,6 +493,9 @@ class YarnCluster(object):
         self._asynchronous = asynchronous
         self._loop_runner = LoopRunner(loop=loop, asynchronous=asynchronous)
         self._loop_runner.start()
+
+        if not self.asynchronous:
+            self._sync(self._start_internal())
 
     def _start_cluster(self):
         """Start the cluster and initialize state"""

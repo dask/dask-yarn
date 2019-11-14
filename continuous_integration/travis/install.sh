@@ -8,7 +8,6 @@ conda create -n test-environment \
     dask \
     distributed \
     flake8 \
-    black \
     nomkl \
     pytest \
     python=$1 \
@@ -16,7 +15,7 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install conda-pack skein pytest-asyncio
+pip install conda-pack skein pytest-asyncio black
 
 cd ~/dask-yarn
 pip install -v --no-deps .
