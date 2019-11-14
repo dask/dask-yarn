@@ -505,3 +505,32 @@ def test_widget_and_html_reprs(skein_client, conda_env):
         cluster.scale(1)
 
     check_is_shutdown(skein_client, cluster.app_id)
+
+
+def test_logs(conda_env, skein_client):
+    with YarnCluster(
+        environment=conda_env,
+        deploy_mode="local",
+        worker_memory="256 MiB",
+        name="test-widget",
+        skein_client=skein_client,
+    ) as cluster:
+        cluster.scale(2)
+        start = time.time()
+        while len(cluster._observed) != 2:
+            time.sleep(0.1)
+            assert time.time() < start + 30, "timeout cluster.scale(2)"
+
+        logs = cluster.logs()
+        assert len(logs) == 3
+
+        logs = cluster.logs(scheduler=True, workers=False)
+        assert len(logs) == 1
+
+        logs = cluster.logs(scheduler=False, workers=False)
+        assert len(logs) == 0
+
+        logs = cluster.logs(scheduler=False, workers=True)
+        assert len(logs) == 2
+
+    check_is_shutdown(skein_client, cluster.app_id)
