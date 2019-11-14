@@ -61,6 +61,30 @@ def test_basic(deploy_mode, skein_client, conda_env):
     check_is_shutdown(skein_client, cluster.app_id)
 
 
+def test_adapt(skein_client, conda_env):
+    with YarnCluster(
+        environment=conda_env,
+        deploy_mode="local",
+        worker_memory="256 MiB",
+        name="test-adapt",
+        skein_client=skein_client,
+    ) as cluster:
+
+        cluster.adapt()
+
+        with Client(cluster) as client:
+            future = client.submit(lambda x: x + 1, 10)
+            result = future.result()
+            assert result == 11
+
+        start = time.time()
+        while cluster.workers():
+            time.sleep(0.1)
+            assert time.time() < start + 30, "auto-scaledown timeout"
+
+    check_is_shutdown(skein_client, cluster.app_id)
+
+
 def test_from_specification(skein_client, conda_env, tmpdir):
     spec = _make_specification(
         environment=conda_env,
@@ -415,7 +439,7 @@ async def test_basic_async(deploy_mode, skein_client, conda_env):
         deploy_mode=deploy_mode,
         worker_memory="512 MiB",
         scheduler_memory="512 MiB",
-        name="test-basic",
+        name="test-basic-async",
         skein_client=skein_client,
         asynchronous=True,
     ) as cluster:
@@ -446,5 +470,38 @@ async def test_basic_async(deploy_mode, skein_client, conda_env):
         while len(await cluster.workers()) != 1:
             await asyncio.sleep(0.1)
             assert time.time() < start + 30, "timeout cluster.scale(1)"
+
+    check_is_shutdown(skein_client, cluster.app_id)
+
+
+def test_widget_and_html_reprs(skein_client, conda_env):
+    pytest.importorskip("ipywidgets")
+
+    with YarnCluster(
+        environment=conda_env,
+        deploy_mode="local",
+        worker_memory="256 MiB",
+        name="test-widget",
+        skein_client=skein_client,
+    ) as cluster:
+        # Smoke test widget
+        cluster._widget()
+
+        # Test non-widget html repr
+        assert cluster.app_id in cluster._repr_html_()
+
+        assert "0" in cluster._widget_status()
+
+        # Scale up and wait
+        cluster.scale(1)
+        start = time.time()
+        while len(cluster._observed) != 1:
+            time.sleep(0.1)
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
+
+        assert "1" in cluster._widget_status()
+
+        # Scale down
+        cluster.scale(1)
 
     check_is_shutdown(skein_client, cluster.app_id)
