@@ -11,7 +11,8 @@ conda create -n test-environment \
     nomkl \
     pytest \
     python=$1 \
-    pyyaml
+    pyyaml \
+    regex
 
 source activate test-environment
 
