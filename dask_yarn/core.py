@@ -17,6 +17,8 @@ from distributed.utils import (
     LoopRunner,
     format_dashboard_link,
     parse_timedelta,
+    Log,
+    Logs,
 )
 
 import skein
@@ -736,6 +738,38 @@ class YarnCluster(object):
     def workers(self):
         """A list of all currently running worker containers."""
         return self._sync(self._workers())
+
+    async def _logs(self, scheduler=True, workers=True):
+        logs = Logs()
+
+        if scheduler:
+            slogs = await self.scheduler_comm.logs()
+            logs["Scheduler"] = Log("\n".join(line for level, line in slogs))
+
+        if workers:
+            d = await self.scheduler_comm.worker_logs(workers=workers)
+            for k, v in d.items():
+                logs[k] = Log("\n".join(line for level, line in v))
+
+        return logs
+
+    def logs(self, scheduler=True, workers=True):
+        """ Return logs for the scheduler and/or workers
+
+        Parameters
+        ----------
+        scheduler : boolean, optional
+            Whether or not to collect logs for the scheduler
+        workers : boolean or iterable, optional
+            A list of worker addresses to select. Defaults to all workers if
+            ``True`` or no workers if ``False``
+
+        Returns
+        -------
+        logs : dict
+            A dictionary of name -> logs.
+        """
+        return self._sync(self._logs(scheduler=scheduler, workers=workers))
 
     async def _scale_up(self, n):
         if n > len(self._requested):
