@@ -8,15 +8,15 @@ conda create -n test-environment \
     dask \
     distributed \
     flake8 \
-    black \
     nomkl \
     pytest \
     python=$1 \
-    pyyaml
+    pyyaml \
+    regex
 
 source activate test-environment
 
-pip install conda-pack skein
+pip install conda-pack skein pytest-asyncio black
 
 cd ~/dask-yarn
 pip install -v --no-deps .

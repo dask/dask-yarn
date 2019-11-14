@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 
@@ -404,3 +405,46 @@ def test_environment_relative_paths():
     a = _make_specification(environment=relpath).to_dict()
     b = _make_specification(environment=abspath).to_dict()
     assert a == b
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("deploy_mode", ["remote", "local"])
+async def test_basic_async(deploy_mode, skein_client, conda_env):
+    async with YarnCluster(
+        environment=conda_env,
+        deploy_mode=deploy_mode,
+        worker_memory="512 MiB",
+        scheduler_memory="512 MiB",
+        name="test-basic",
+        skein_client=skein_client,
+        asynchronous=True,
+    ) as cluster:
+        # Smoketest repr
+        repr(cluster)
+
+        if bokeh_installed:
+            assert cluster.dashboard_link is not None
+
+        # Scale up
+        await cluster.scale(2)
+
+        async with Client(cluster, asynchronous=True) as client:
+            result = await client.submit(inc, 10)
+            assert result == 11
+            await client.get_versions(check=True)
+
+        # Check that 2 workers exist
+        start = time.time()
+        while len(await cluster.workers()) != 2:
+            await asyncio.sleep(0.1)
+            assert time.time() < start + 30, "timeout cluster.scale(2)"
+
+        # Scale down
+        await cluster.scale(1)
+
+        start = time.time()
+        while len(await cluster.workers()) != 1:
+            await asyncio.sleep(0.1)
+            assert time.time() < start + 30, "timeout cluster.scale(1)"
+
+    check_is_shutdown(skein_client, cluster.app_id)
