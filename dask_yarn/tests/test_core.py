@@ -9,7 +9,11 @@ import pytest
 import skein
 
 from dask_yarn import YarnCluster
-from dask_yarn.core import _make_specification, _make_submit_specification
+from dask_yarn.core import (
+    _make_specification,
+    _make_submit_specification,
+    _make_scheduler_kwargs,
+)
 from .conftest import check_is_shutdown
 
 try:
@@ -29,12 +33,19 @@ def test_basic(deploy_mode, skein_client, conda_env):
         scheduler_memory="512 MiB",
         name="test-basic",
         skein_client=skein_client,
+        dashboard_address=":8787",
+        port=8786,
     ) as cluster:
         # Smoketest repr
         repr(cluster)
 
         if bokeh_installed:
             assert cluster.dashboard_link is not None
+            if deploy_mode == "local":
+                assert ":8787" in cluster.dashboard_link
+
+        if deploy_mode == "local":
+            assert ":8786" in cluster.scheduler_address
 
         # Scale up
         cluster.scale(2)
@@ -222,6 +233,9 @@ def test_configuration(deploy_mode):
                 "env": {"foo": "bar"},
             },
             "scheduler": {"memory": "1234 MiB", "vcores": 1},
+            "host": "0.0.0.0",
+            "port": 8786,
+            "dashboard_address": ":8787",
         }
     }
 
@@ -237,6 +251,11 @@ def test_configuration(deploy_mode):
             assert spec.services["dask.scheduler"].resources.memory == 1234
         else:
             assert "dask.scheduler" not in spec.services
+
+        kwargs = _make_scheduler_kwargs()
+        assert kwargs["host"] == "0.0.0.0"
+        assert kwargs["port"] == 8786
+        assert kwargs["dashboard_address"] == ":8787"
 
 
 def test_configuration_full_specification(conda_env, tmpdir):

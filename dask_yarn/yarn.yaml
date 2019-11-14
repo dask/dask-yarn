@@ -10,6 +10,10 @@ yarn:
   user: ''                   # The user to submit the application on behalf of,
                              # leave as empty string for current user.
 
+  host: "0.0.0.0"            # The scheduler host, when in deploy-mode=local
+  port: 0                    # The scheduler port, when in deploy-mode=local
+  dashboard-address: ":0"    # The dashboard address, when in deploy-mode=local
+
   scheduler:                 # Specifications of scheduler container
     vcores: 1
     memory: 2GiB

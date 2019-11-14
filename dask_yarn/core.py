@@ -260,6 +260,13 @@ def _make_submit_specification(script, args=(), **kwargs):
     return spec
 
 
+def _make_scheduler_kwargs(**kwargs):
+    host = lookup(kwargs, "host", "yarn.host")
+    port = lookup(kwargs, "port", "yarn.port")
+    dashboard_address = lookup(kwargs, "dashboard_address", "yarn.dashboard-address")
+    return {"host": host, "port": port, "dashboard_address": dashboard_address}
+
+
 class YarnCluster(object):
     """Start a Dask cluster on YARN.
 
@@ -312,6 +319,15 @@ class YarnCluster(object):
         The user to submit the application on behalf of. Default is the current
         user - submitting as a different user requires user permissions, see
         the YARN documentation for more information.
+    host : str, optional
+        Host address on which the scheduler will listen. Only used if
+        ``deploy_mode='local'``. Defaults to ``'0.0.0.0'``.
+    port : int, optional
+        The port on which the scheduler will listen. Only used if
+        ``deploy_mode='local'``. Defaults to ``0`` for a random port.
+    dashboard_address : str
+        Address on which to the dashboard server will listen. Only used if
+        ``deploy_mode='local'``. Defaults to ':0' for a random port.
     skein_client : skein.Client, optional
         The ``skein.Client`` to use. If not provided, one will be started.
     asynchronous : bool, optional
@@ -342,6 +358,9 @@ class YarnCluster(object):
         queue=None,
         tags=None,
         user=None,
+        host=None,
+        port=None,
+        dashboard_address=None,
         skein_client=None,
         asynchronous=False,
         loop=None,
@@ -362,7 +381,13 @@ class YarnCluster(object):
             user=user,
         )
         self._init_common(
-            spec=spec, asynchronous=asynchronous, loop=loop, skein_client=skein_client
+            spec=spec,
+            host=host,
+            port=port,
+            dashboard_address=dashboard_address,
+            asynchronous=asynchronous,
+            loop=loop,
+            skein_client=skein_client,
         )
 
     @classmethod
@@ -477,15 +502,21 @@ class YarnCluster(object):
         self,
         spec=None,
         application_client=None,
+        host=None,
+        port=None,
+        dashboard_address=None,
         asynchronous=False,
         loop=None,
         skein_client=None,
     ):
         self.spec = spec
         self.application_client = application_client
+        self._scheduler_kwargs = _make_scheduler_kwargs(
+            host=host, port=port, dashboard_address=dashboard_address,
+        )
+        self._scheduler = None
         self.scheduler_info = {}
         self._requested = set()
-        self._scheduler = None
         self.scheduler_comm = None
         self._watch_worker_status_task = None
         self._start_task = None
@@ -569,12 +600,7 @@ class YarnCluster(object):
         if self.spec is not None:
             # Start a new cluster
             if "dask.scheduler" not in self.spec.services:
-                self._scheduler = Scheduler(
-                    host="0.0.0.0",
-                    port=0,
-                    dashboard_address="0.0.0.0:0",
-                    loop=self.loop,
-                )
+                self._scheduler = Scheduler(loop=self.loop, **self._scheduler_kwargs,)
                 await self._scheduler
             else:
                 self._scheduler = None
