@@ -130,9 +130,20 @@ selected and scaled down gracefully, freeing up resources.
     # Scale back down to 2 workers
     cluster.scale(2)
 
-Alternatively, if you're working interactively in a `Jupyter Notebook`_ or
-JupyterLab_, you can use the provided graphical interface to change the cluster
-size.
+Alternatively, you can enable adaptive scaling using the
+:func:`YarnCluster.adapt` method. When enabled, the cluster will scale up and
+down automatically depending on usage. Here we turn on adaptive scaling,
+bounded at a minimum of 2 workers and a maximum of 10 workers.
+
+.. code-block:: python
+
+    # Adaptively scale between 2 and 10 workers
+    cluster.adapt(minimum=2, maximum=10)
+
+If you're working interactively in a `Jupyter Notebook`_ or JupyterLab_, you
+can also use the provided graphical interface to change the cluster size,
+instead of calling :func:`YarnCluster.scale` or :func:`YarnCluster.adapt`
+manually.
 
 .. image:: /_images/cluster-widget.png
     :alt: Cluster widget in a Jupyter Notebook
