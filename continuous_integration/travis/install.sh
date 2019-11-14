@@ -12,7 +12,8 @@ conda create -n test-environment \
     pytest \
     python=$1 \
     pyyaml \
-    regex
+    regex \
+    ipywidgets
 
 source activate test-environment
 

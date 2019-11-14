@@ -9,12 +9,14 @@ from urllib.parse import urlparse
 
 import dask
 from distributed.core import rpc
+from distributed.deploy.adaptive_core import AdaptiveCore
 from distributed.scheduler import Scheduler
 from distributed.utils import (
     format_bytes,
     log_errors,
     LoopRunner,
     format_dashboard_link,
+    parse_timedelta,
 )
 
 import skein
@@ -482,13 +484,15 @@ class YarnCluster(object):
         self.spec = spec
         self.application_client = application_client
         self.scheduler_info = {}
-        self.requested = set()
+        self._requested = set()
         self._scheduler = None
         self.scheduler_comm = None
         self._watch_worker_status_task = None
         self._start_task = None
         self._stop_task = None
         self._finalizer = None
+        self._adaptive = None
+        self._adaptive_options = {}
         self._skein_client = skein_client
         self._asynchronous = asynchronous
         self._loop_runner = LoopRunner(loop=loop, asynchronous=asynchronous)
@@ -586,7 +590,7 @@ class YarnCluster(object):
             await comm.write({"op": "subscribe_worker_status"})
             self.scheduler_info = await comm.read()
             workers = self.scheduler_info.get("workers", {})
-            self.requested.update(w["name"] for w in workers.values())
+            self._requested.update(w["name"] for w in workers.values())
             self._watch_worker_status_task = asyncio.ensure_future(
                 self._watch_worker_status(comm)
             )
@@ -607,6 +611,9 @@ class YarnCluster(object):
                 # We're still starting, cancel task
                 await cancel_task(self._start_task)
             self._start_task = None
+
+        if self._adaptive is not None:
+            self._adaptive.stop()
 
         if self._watch_worker_status_task is not None:
             await cancel_task(self._watch_worker_status_task)
@@ -717,11 +724,7 @@ class YarnCluster(object):
         self.close()
 
     @property
-    def plan(self):
-        return self.requested
-
-    @property
-    def observed(self):
+    def _observed(self):
         return {w["name"] for w in self.scheduler_info["workers"].values()}
 
     async def _workers(self):
@@ -735,25 +738,15 @@ class YarnCluster(object):
         return self._sync(self._workers())
 
     async def _scale_up(self, n):
-        if n > len(self.requested):
+        if n > len(self._requested):
             containers = await self.loop.run_in_executor(
                 None, lambda: self.application_client.scale("dask.worker", n),
             )
-            self.requested.update(c.id for c in containers)
-
-    def scale_up(self, n):
-        """Ensure there are at least n dask workers available for this cluster.
-
-        No-op if ``n`` is less than the current number of workers.
-
-        Examples
-        --------
-        >>> cluster.scale_up(20)  # ask for twenty workers
-        """
-        return self._sync(self._scale_up(n))
+            self._requested.update(c.id for c in containers)
 
     async def _scale_down(self, workers):
-        await self.scheduler_comm.retire_workers(workers=list(workers))
+        self._requested.difference_update(workers)
+        await self.scheduler_comm.retire_workers(names=list(workers))
 
         def _kill_containers():
             for c in workers:
@@ -766,27 +759,19 @@ class YarnCluster(object):
             None, _kill_containers,
         )
 
-    def scale_down(self, workers):
-        """Retire the selected workers.
-
-        Parameters
-        ----------
-        workers: list
-            List of addresses of workers to close.
-        """
-        return self._sync(self._scale_down)
-
     async def _scale(self, n):
-        if n >= len(self.requested):
+        if self._adaptive is not None:
+            self._adaptive.stop()
+        if n >= len(self._requested):
             return await self._scale_up(n)
         else:
-            n_to_delete = len(self.requested) - n
-            pending = list(self.requested - self.observed)
-            running = list(self.observed.difference(pending))
+            n_to_delete = len(self._requested) - n
+            pending = list(self._requested - self._observed)
+            running = list(self._observed.difference(pending))
             to_close = pending[:n_to_delete]
             to_close.extend(running[: n_to_delete - len(to_close)])
             await self._scale_down(to_close)
-            self.requested.difference_update(to_close)
+            self._requested.difference_update(to_close)
 
     def scale(self, n):
         """Scale cluster to n workers.
@@ -801,6 +786,53 @@ class YarnCluster(object):
         >>> cluster.scale(10)  # scale cluster to ten workers
         """
         return self._sync(self._scale(n))
+
+    def adapt(
+        self,
+        minimum=0,
+        maximum=math.inf,
+        interval="1s",
+        wait_count=3,
+        target_duration="5s",
+        **kwargs
+    ):
+        """Turn on adaptivity
+
+        This scales Dask clusters automatically based on scheduler activity.
+
+        Parameters
+        ----------
+        minimum : int, optional
+            Minimum number of workers. Defaults to ``0``.
+        maximum : int, optional
+            Maximum number of workers. Defaults to ``inf``.
+        interval : timedelta or str, optional
+            Time between worker add/remove recommendations.
+        wait_count : int, optional
+            Number of consecutive times that a worker should be suggested for
+            removal before we remove it.
+        target_duration : timedelta or str, optional
+            Amount of time we want a computation to take. This affects how
+            aggressively we scale up.
+        **kwargs :
+            Additional parameters to pass to
+            ``distributed.Scheduler.workers_to_close``.
+
+        Examples
+        --------
+        >>> cluster.adapt(minimum=0, maximum=10)
+        """
+        if self._adaptive is not None:
+            self._adaptive.stop()
+        self._adaptive_options.update(
+            minimum=minimum,
+            maximum=maximum,
+            interval=interval,
+            wait_count=wait_count,
+            target_duration=target_duration,
+            **kwargs,
+        )
+        self._adaptive = Adaptive(self, **self._adaptive_options)
 
     async def _watch_worker_status(self, comm):
         # We don't want to hold on to a ref to self, otherwise this will
@@ -822,10 +854,10 @@ class YarnCluster(object):
                             workers = msg.pop("workers")
                             self.scheduler_info["workers"].update(workers)
                             self.scheduler_info.update(msg)
-                            self.requested.update(w["name"] for w in workers.values())
+                            self._requested.update(w["name"] for w in workers.values())
                         elif op == "remove":
                             del self.scheduler_info["workers"][msg]
-                            self.requested.discard(msg)
+                            self._requested.discard(msg)
                     if hasattr(self, "_status_widget"):
                         self._status_widget.value = self._widget_status()
                 finally:
@@ -856,7 +888,7 @@ class YarnCluster(object):
             return None
 
         try:
-            from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML
+            from ipywidgets import Layout, VBox, HBox, IntText, Button, HTML, Accordion
         except ImportError:
             self._cached_widget = None
             return None
@@ -870,12 +902,30 @@ class YarnCluster(object):
         request = IntText(0, description="Workers", layout=layout)
         scale = Button(description="Scale", layout=layout)
 
+        minimum = IntText(0, description="Minimum", layout=layout)
+        maximum = IntText(0, description="Maximum", layout=layout)
+        adapt = Button(description="Adapt", layout=layout)
+
+        accordion = Accordion(
+            [HBox([request, scale]), HBox([minimum, maximum, adapt])],
+            layout=Layout(min_width="500px"),
+        )
+        accordion.selected_index = None
+        accordion.set_title(0, "Manual Scaling")
+        accordion.set_title(1, "Adaptive Scaling")
+
+        @adapt.on_click
+        def adapt_cb(b):
+            self.adapt(minimum=minimum.value, maximum=maximum.value)
+
         @scale.on_click
         def scale_cb(b):
             with log_errors():
                 self.scale(request.value)
 
-        elements = [title, HBox([status, request, scale])]
+        app_id = HTML("<p><b>Application ID: </b>{0}</p>".format(self.app_id))
+
+        elements = [title, HBox([status, accordion]), app_id]
 
         if self.dashboard_link is not None:
             link = HTML(
@@ -909,10 +959,60 @@ class YarnCluster(object):
         return (
             "<div style='background-color: #f2f2f2; display: inline-block; "
             "padding: 10px; border: 1px solid #999999;'>\n"
-            "  <h3>GatewayCluster</h3>\n"
+            "  <h3>YarnCluster</h3>\n"
             "  <ul>\n"
-            "    <li><b>Name: </b>{name}\n"
+            "    <li><b>Application ID: </b>{app_id}\n"
             "    <li><b>Dashboard: </b>{dashboard}\n"
             "  </ul>\n"
             "</div>\n"
-        ).format(name=self.name, dashboard=dashboard)
+        ).format(app_id=self.app_id, dashboard=dashboard)
+
+
+class Adaptive(AdaptiveCore):
+    def __init__(
+        self,
+        cluster=None,
+        interval="1s",
+        minimum=0,
+        maximum=math.inf,
+        wait_count=3,
+        target_duration="5s",
+        **kwargs
+    ):
+        self.cluster = cluster
+        self.target_duration = parse_timedelta(target_duration)
+        self._workers_to_close_kwargs = kwargs
+
+        super().__init__(
+            minimum=minimum, maximum=maximum, wait_count=wait_count, interval=interval
+        )
+
+    @property
+    def requested(self):
+        return self.cluster._requested
+
+    plan = requested
+
+    @property
+    def observed(self):
+        return self.cluster._observed
+
+    async def target(self):
+        return await self.cluster.scheduler_comm.adaptive_target(
+            target_duration=self.target_duration
+        )
+
+    async def workers_to_close(self, target):
+        return await self.cluster.scheduler_comm.workers_to_close(
+            target=target, attribute="name", **self._workers_to_close_kwargs
+        )
+
+    async def scale_down(self, workers):
+        await self.cluster._scale_down(workers)
+
+    async def scale_up(self, n):
+        await self.cluster._scale_up(n)
+
+    @property
+    def loop(self):
+        return self.cluster.loop
