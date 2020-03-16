@@ -696,12 +696,24 @@ class YarnCluster(object):
     def _sync(self, task):
         if self.asynchronous:
             return task
-        future = asyncio.run_coroutine_threadsafe(task, self.loop.asyncio_loop)
-        try:
-            return future.result()
-        except BaseException:
-            future.cancel()
-            raise
+        elif hasattr(self.loop, "asyncio_loop"):
+            future = asyncio.run_coroutine_threadsafe(task, self.loop.asyncio_loop)
+            try:
+                return future.result()
+            except BaseException:
+                future.cancel()
+                raise
+        else:
+            # XXX: this is only needed to support non-asyncio-backed tornado
+            # eventloops dask distributed's `sync` method doesn't handle
+            # cancellation properly (at the time of writing), so we should try
+            # to use `run_coroutine_threadsafe` when possible.
+            from distributed.utils import sync
+
+            async def f():
+                return await task
+
+            return sync(self.loop, f)
 
     @cached_property
     def dashboard_link(self):
@@ -725,7 +737,13 @@ class YarnCluster(object):
         """
         if self.asynchronous:
             return self._stop_internal(status=status, diagnostics=diagnostics)
-        if self.loop.asyncio_loop.is_running() and not sys.is_finalizing():
+        if hasattr(self.loop, "asyncio_loop"):
+            loop_running = self.loop.asyncio_loop.is_running()
+        else:
+            # Tornado has no `is_running` loop method, just assume we're running
+            # for legacy implementations
+            loop_running = True
+        if loop_running and not sys.is_finalizing():
             self._sync(self._stop_internal(status=status, diagnostics=diagnostics))
         else:
             # Always run this!
