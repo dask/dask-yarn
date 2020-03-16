@@ -122,21 +122,19 @@ def _files_and_build_script(environment):
     if scheme in {"conda", "venv", "python"}:
         path = environment[len(scheme) + 3 :]
         files = {}
+        if scheme == "conda":
+            setup = "conda activate %s" % path
+            cli = "dask-yarn"
+        elif scheme == "venv":
+            setup = "source %s/bin/activate" % path
+            cli = "dask-yarn"
+        else:
+            setup = ""
+            cli = "%s -m dask_yarn.cli" % path
     else:
-        # Treat archived environments the same as venvs
-        scheme = "venv"
-        path = "environment"
         files = {"environment": environment}
-
-    if scheme == "conda":
-        setup = "conda activate %s" % path
-        cli = "dask-yarn"
-    elif scheme == "venv":
-        setup = "source %s/bin/activate" % path
-        cli = "dask-yarn"
-    else:
-        setup = ""
-        cli = "%s -m dask_yarn.cli" % path
+        setup = "source environment/bin/activate"
+        cli = "environment/bin/python -m dask_yarn.cli"
 
     def build_script(cmd):
         command = "%s %s" % (cli, cmd)
