@@ -81,7 +81,7 @@ grep -q '"isMaster": true' /mnt/var/lib/info/instance.json \
 # 2. Install Miniconda
 # -----------------------------------------------------------------------------
 echo "Installing Miniconda"
-curl https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
+curl -L https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
 bash /tmp/miniconda.sh -b -p $HOME/miniconda
 rm /tmp/miniconda.sh
 echo -e '\nexport PATH=$HOME/miniconda/bin:$PATH' >> $HOME/.bashrc
