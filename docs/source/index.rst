@@ -60,5 +60,6 @@ always be installed from source.
     configuration.rst
     submit.rst
     aws-emr.rst
+    gcp-dataproc.rst
     api.rst
     cli.rst
