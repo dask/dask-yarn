@@ -169,7 +169,7 @@ for more information.
 
 .. _Amazon Elastic MapReduce: https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-what-is-emr.html
 .. _example script:
-.. _example bootstrap action: https://github.com/dask/dask-yarn/blob/master/deployment_resources/aws-emr/bootstrap-dask
+.. _example bootstrap action: https://github.com/dask/dask-yarn/blob/main/deployment_resources/aws-emr/bootstrap-dask
 .. _using bootstrap actions:
 .. _bootstrap action: https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-plan-bootstrap.html
 .. _miniconda: http://conda.pydata.org/miniconda.html

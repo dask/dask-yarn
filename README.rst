@@ -16,9 +16,9 @@ LICENSE
 -------
 
 New BSD. See the
-`License File <https://github.com/dask/dask-yarn/blob/master/LICENSE.txt>`_.
+`License File <https://github.com/dask/dask-yarn/blob/main/LICENSE.txt>`_.
 
-.. |travis| image:: https://travis-ci.org/dask/dask-yarn.svg?branch=master
+.. |travis| image:: https://travis-ci.org/dask/dask-yarn.svg?branch=main
    :target: https://travis-ci.org/dask/dask-yarn
 .. |pypi| image:: https://img.shields.io/pypi/v/dask-yarn.svg
    :target: https://pypi.org/project/dask-yarn/
