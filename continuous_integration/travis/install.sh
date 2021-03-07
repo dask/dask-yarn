@@ -2,6 +2,7 @@
 set -xe
 
 conda config --set always_yes yes --set changeps1 no
+conda update conda -n base
 
 conda create -n test-environment \
     cryptography \
@@ -17,10 +18,10 @@ conda create -n test-environment \
 
 source activate test-environment
 
-pip install conda-pack skein pytest-asyncio black
+python -m pip install conda-pack skein pytest-asyncio black
 
 cd ~/dask-yarn
-pip install -v --no-deps .
+python -m pip install -v --no-deps .
 
 conda list
 
