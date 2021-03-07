@@ -14,11 +14,13 @@ conda create -n test-environment \
     python=$1 \
     pyyaml \
     regex \
+    conda-pack \
+    skein \
+    pytest-asyncio \
+    black \
     ipywidgets
 
 source activate test-environment
-
-python -m pip install conda-pack skein pytest-asyncio black
 
 cd ~/dask-yarn
 python -m pip install -v --no-deps .
