@@ -4,7 +4,7 @@ set -xe
 conda config --set always_yes yes --set changeps1 no
 conda update conda -n base
 
-conda create -n test-environment \
+conda create -n test-environment -c conda-forge \
     cryptography \
     dask \
     distributed \
@@ -14,8 +14,8 @@ conda create -n test-environment \
     python=$1 \
     pyyaml \
     regex \
-    conda-pack \
-    skein \
+    conda-pack>=0.6 \
+    skein>=0.8.1 \
     pytest-asyncio \
     black \
     ipywidgets
