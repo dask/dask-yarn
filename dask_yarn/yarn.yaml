@@ -24,6 +24,8 @@ yarn:
     count: 0                # Number of workers to start on initialization
     restarts: -1            # Allowed number of restarts, -1 for unlimited
     env: {}                 # A map of environment variables to set on the worker
+    worker_class: "dask.distributed.Nanny" # The kind of worker to launch
+    worker_options: {}      # A map of options to pass to the worker
 
   client:                   # Specification of client container
     vcores: 1

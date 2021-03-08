@@ -1,7 +1,9 @@
 import asyncio
 import math
 import os
+import base64
 import sys
+import json
 import warnings
 import weakref
 from contextlib import contextmanager
@@ -188,6 +190,15 @@ def _make_specification(**kwargs):
     n_workers = lookup(kwargs, "n_workers", "yarn.worker.count")
     worker_restarts = lookup(kwargs, "worker_restarts", "yarn.worker.restarts")
     worker_env = lookup(kwargs, "worker_env", "yarn.worker.env")
+    worker_class = lookup(kwargs, "worker_class", "yarn.worker.worker_class")
+    worker_env["worker_class"] = worker_class
+
+    worker_options = lookup(kwargs, "worker_options", "yarn.worker.worker_options")
+    # json dump string
+    # encode as base64
+    # decode from bytes to string
+    worker_options = base64.b64encode(json.dumps(worker_options).encode()).decode()
+    worker_env["worker_options"] = worker_options
     worker_vcores = lookup(kwargs, "worker_vcores", "yarn.worker.vcores")
     worker_memory = parse_memory(
         lookup(kwargs, "worker_memory", "yarn.worker.memory"), "worker"
@@ -351,6 +362,8 @@ class YarnCluster(object):
         worker_memory=None,
         worker_restarts=None,
         worker_env=None,
+        worker_class=None,
+        worker_options=None,
         scheduler_vcores=None,
         scheduler_memory=None,
         deploy_mode=None,
@@ -365,6 +378,7 @@ class YarnCluster(object):
         asynchronous=False,
         loop=None,
     ):
+
         spec = _make_specification(
             environment=environment,
             n_workers=n_workers,
@@ -372,6 +386,8 @@ class YarnCluster(object):
             worker_memory=worker_memory,
             worker_restarts=worker_restarts,
             worker_env=worker_env,
+            worker_class=worker_class,
+            worker_options=worker_options,
             scheduler_vcores=scheduler_vcores,
             scheduler_memory=scheduler_memory,
             deploy_mode=deploy_mode,
@@ -512,9 +528,7 @@ class YarnCluster(object):
         self.spec = spec
         self.application_client = application_client
         self._scheduler_kwargs = _make_scheduler_kwargs(
-            host=host,
-            port=port,
-            dashboard_address=dashboard_address,
+            host=host, port=port, dashboard_address=dashboard_address,
         )
         self._scheduler = None
         self.scheduler_info = {}
@@ -602,10 +616,7 @@ class YarnCluster(object):
         if self.spec is not None:
             # Start a new cluster
             if "dask.scheduler" not in self.spec.services:
-                self._scheduler = Scheduler(
-                    loop=self.loop,
-                    **self._scheduler_kwargs,
-                )
+                self._scheduler = Scheduler(loop=self.loop, **self._scheduler_kwargs,)
                 await self._scheduler
             else:
                 self._scheduler = None
@@ -803,8 +814,7 @@ class YarnCluster(object):
     async def _scale_up(self, n):
         if n > len(self._requested):
             containers = await self.loop.run_in_executor(
-                None,
-                lambda: self.application_client.scale("dask.worker", n),
+                None, lambda: self.application_client.scale("dask.worker", n),
             )
             self._requested.update(c.id for c in containers)
 
@@ -820,8 +830,7 @@ class YarnCluster(object):
                     pass
 
         await self.loop.run_in_executor(
-            None,
-            _kill_containers,
+            None, _kill_containers,
         )
 
     async def _scale(self, n):
