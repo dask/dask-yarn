@@ -528,7 +528,9 @@ class YarnCluster(object):
         self.spec = spec
         self.application_client = application_client
         self._scheduler_kwargs = _make_scheduler_kwargs(
-            host=host, port=port, dashboard_address=dashboard_address,
+            host=host,
+            port=port,
+            dashboard_address=dashboard_address,
         )
         self._scheduler = None
         self.scheduler_info = {}
@@ -616,7 +618,10 @@ class YarnCluster(object):
         if self.spec is not None:
             # Start a new cluster
             if "dask.scheduler" not in self.spec.services:
-                self._scheduler = Scheduler(loop=self.loop, **self._scheduler_kwargs,)
+                self._scheduler = Scheduler(
+                    loop=self.loop,
+                    **self._scheduler_kwargs,
+                )
                 await self._scheduler
             else:
                 self._scheduler = None
@@ -814,7 +819,8 @@ class YarnCluster(object):
     async def _scale_up(self, n):
         if n > len(self._requested):
             containers = await self.loop.run_in_executor(
-                None, lambda: self.application_client.scale("dask.worker", n),
+                None,
+                lambda: self.application_client.scale("dask.worker", n),
             )
             self._requested.update(c.id for c in containers)
 
@@ -830,7 +836,8 @@ class YarnCluster(object):
                     pass
 
         await self.loop.run_in_executor(
-            None, _kill_containers,
+            None,
+            _kill_containers,
         )
 
     async def _scale(self, n):
