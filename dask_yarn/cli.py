@@ -451,11 +451,11 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     app_client = skein.ApplicationClient.from_current()
 
     scheduler = app_client.kv.wait("dask.scheduler").decode()
-    worker_class = os.environ.get('worker_class', "dask.distributed.Nanny")
-    options = os.environ.get('worker_options', str(base64.b64encode(b'{}')))
+    worker_class = os.environ.get("worker_class", "dask.distributed.Nanny")
+    options = os.environ.get("worker_options", str(base64.b64encode(b"{}")))
 
     # options come in a string
-    # enconde string as bytes
+    # encode string as bytes
     # decode base64
     # load with json
     options = base64.b64decode(options.encode())
@@ -478,6 +478,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     ]
     print(command)
     subprocess.check_call(command)
+
 
 @subcommand(
     services.subs,

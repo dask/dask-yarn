@@ -56,7 +56,7 @@ def test_basic(deploy_mode, skein_client, conda_env):
             assert future.result() == 11
             client.get_versions(check=True)
             resource_tags = client.run(lambda dask_worker: dask_worker.total_resources)
-            assert {'FOO': 'BAZ'} in list(resource_tags.values())
+            assert {"FOO": "BAZ"} in list(resource_tags.values())
 
         # Check that 2 workers exist
         start = time.time()
@@ -235,7 +235,7 @@ def test_configuration(deploy_mode):
                 "restarts": -1,
                 "env": {"foo": "bar"},
                 "worker_class": "abc",
-                "worker_options": {"FOO": "BAZ"}
+                "worker_options": {"FOO": "BAZ"},
             },
             "scheduler": {"memory": "1234 MiB", "vcores": 1},
             "host": "0.0.0.0",
@@ -251,7 +251,11 @@ def test_configuration(deploy_mode):
         assert spec.queue == "myqueue"
         assert spec.tags == {"a", "b", "c"}
         assert spec.services["dask.worker"].resources.memory == 1234
-        assert spec.services["dask.worker"].env == {'foo': 'bar', 'worker_class': 'abc', 'worker_options': 'eyJGT08iOiAiQkFaIn0='}
+        assert spec.services["dask.worker"].env == {
+            "foo": "bar",
+            "worker_class": "abc",
+            "worker_options": "eyJGT08iOiAiQkFaIn0=",
+        }
 
         if deploy_mode == "remote":
             assert spec.services["dask.scheduler"].resources.memory == 1234
