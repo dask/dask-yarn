@@ -24,7 +24,7 @@ jobs:
       - PYTHON=3.7
     - env:
       - CLUSTER_CONFIG=simple
-      - PYTHON=3.6
+      - PYTHON=3.8
 
 before_install:
   # Upgrade docker-compose
@@ -35,7 +35,7 @@ before_install:
   # Install the test cluster
   - pip install git+https://github.com/jcrist/hadoop-test-cluster.git
   # Start the test cluster
-  - htcluster startup --mount .:dask-yarn --config $CLUSTER_CONFIG
+  - htcluster startup --image cdh6 --mount .:dask-yarn --config $CLUSTER_CONFIG
   # No-op to ensure fixuid runs in a more robust way
   - htcluster exec -- pwd
 

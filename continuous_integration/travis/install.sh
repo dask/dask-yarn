@@ -2,8 +2,9 @@
 set -xe
 
 conda config --set always_yes yes --set changeps1 no
+conda update conda -n base
 
-conda create -n test-environment \
+conda create -n test-environment -c conda-forge \
     cryptography \
     dask \
     distributed \
@@ -13,14 +14,16 @@ conda create -n test-environment \
     python=$1 \
     pyyaml \
     regex \
+    conda-pack>=0.6 \
+    skein>=0.8.1 \
+    pytest-asyncio \
+    black \
     ipywidgets
 
 source activate test-environment
 
-pip install conda-pack skein pytest-asyncio black
-
 cd ~/dask-yarn
-pip install -v --no-deps .
+python -m pip install -v --no-deps .
 
 conda list
 
