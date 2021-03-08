@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import skein
 from skein.utils import format_table, humanize_timedelta
 from tornado.ioloop import IOLoop, TimeoutError
-from distributed import Scheduler, Nanny
+from distributed import Scheduler
 from distributed.cli.utils import install_signal_handlers
 from distributed.proctitle import (
     enable_proctitle_on_children,
@@ -472,7 +472,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
         % json.dumps(
             {
                 "cls": worker_class,
-                "opts": {"name": skein.properties.container_id, **worker_options,},
+                "opts": {"name": skein.properties.container_id, **worker_options},
             }
         ),
     ]
