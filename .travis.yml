@@ -13,7 +13,7 @@ git:
 
 branches:
   only:
-    - master
+    - main
 
 jobs:
   fast_finish: true
