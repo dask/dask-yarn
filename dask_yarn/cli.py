@@ -459,11 +459,10 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     # decode base64
     # load with json
     options = base64.b64decode(options.encode())
-    print(options)
     worker_options.update(json.loads(options))
     print(worker_options)
     command = [
-        "python",
+        sys.executable,
         "-m",
         "distributed.cli.dask_spec",
         scheduler,
