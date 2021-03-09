@@ -233,11 +233,12 @@ def test_configuration(deploy_mode):
                 "count": 1,
                 "vcores": 1,
                 "restarts": -1,
+                "gpus": 2,
                 "env": {"foo": "bar"},
                 "worker_class": "abc",
                 "worker_options": {"FOO": "BAZ"},
             },
-            "scheduler": {"memory": "1234 MiB", "vcores": 1},
+            "scheduler": {"memory": "1234 MiB", "vcores": 1, "gpus": 0},
             "host": "0.0.0.0",
             "port": 8786,
             "dashboard_address": ":8787",
@@ -251,6 +252,7 @@ def test_configuration(deploy_mode):
         assert spec.queue == "myqueue"
         assert spec.tags == {"a", "b", "c"}
         assert spec.services["dask.worker"].resources.memory == 1234
+        assert spec.services["dask.worker"].resources.gpus == 2
         assert spec.services["dask.worker"].env == {
             "foo": "bar",
             "worker_class": "abc",
@@ -259,6 +261,7 @@ def test_configuration(deploy_mode):
 
         if deploy_mode == "remote":
             assert spec.services["dask.scheduler"].resources.memory == 1234
+            assert spec.services["dask.scheduler"].resources.gpus == 0
         else:
             assert "dask.scheduler" not in spec.services
 

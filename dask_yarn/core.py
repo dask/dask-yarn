@@ -200,6 +200,7 @@ def _make_specification(**kwargs):
     worker_options = base64.b64encode(json.dumps(worker_options).encode()).decode()
     worker_env["worker_options"] = worker_options
     worker_vcores = lookup(kwargs, "worker_vcores", "yarn.worker.vcores")
+    worker_gpus = lookup(kwargs, "worker_gpus", "yarn.worker.gpus")
     worker_memory = parse_memory(
         lookup(kwargs, "worker_memory", "yarn.worker.memory"), "worker"
     )
@@ -210,13 +211,16 @@ def _make_specification(**kwargs):
 
     if deploy_mode == "remote":
         scheduler_vcores = lookup(kwargs, "scheduler_vcores", "yarn.scheduler.vcores")
+        scheduler_gpus = lookup(kwargs, "scheduler_gpus", "yarn.scheduler.gpus")
         scheduler_memory = parse_memory(
             lookup(kwargs, "scheduler_memory", "yarn.scheduler.memory"), "scheduler"
         )
 
         services["dask.scheduler"] = skein.Service(
             instances=1,
-            resources=skein.Resources(vcores=scheduler_vcores, memory=scheduler_memory),
+            resources=skein.Resources(
+                vcores=scheduler_vcores, memory=scheduler_memory, gpus=scheduler_gpus
+            ),
             max_restarts=0,
             files=files,
             script=build_script("services scheduler"),
@@ -227,7 +231,9 @@ def _make_specification(**kwargs):
 
     services["dask.worker"] = skein.Service(
         instances=n_workers,
-        resources=skein.Resources(vcores=worker_vcores, memory=worker_memory),
+        resources=skein.Resources(
+            vcores=worker_vcores, memory=worker_memory, gpus=worker_gpus
+        ),
         max_restarts=worker_restarts,
         depends=worker_depends,
         files=files,
@@ -251,6 +257,7 @@ def _make_submit_specification(script, args=(), **kwargs):
         # deploy_mode == 'remote'
         client_vcores = lookup(kwargs, "client_vcores", "yarn.client.vcores")
         client_memory = lookup(kwargs, "client_memory", "yarn.client.memory")
+        client_gpus = lookup(kwargs, "client_gpus", "yarn.client.gpus")
         client_env = lookup(kwargs, "client_env", "yarn.client.env")
         client_memory = parse_memory(client_memory, "client")
 
@@ -259,7 +266,9 @@ def _make_submit_specification(script, args=(), **kwargs):
 
         spec.services["dask.client"] = skein.Service(
             instances=1,
-            resources=skein.Resources(vcores=client_vcores, memory=client_memory),
+            resources=skein.Resources(
+                vcores=client_vcores, memory=client_memory, gpus=client_gpus
+            ),
             max_restarts=0,
             depends=["dask.scheduler"],
             files=files,
@@ -310,8 +319,12 @@ class YarnCluster(object):
     worker_env : dict, optional
         A mapping of environment variables to their values. These will be set
         in the worker containers before starting the dask workers.
+    worker_gpus : int, options
+        The number of gpus to allocate per worker
     scheduler_vcores : int, optional
         The number of virtual cores to allocate per scheduler.
+    scheduler_gpus : int, options
+        The number of gpus to allocate per scheduler
     scheduler_memory : str, optional
         The amount of memory to allocate to the scheduler. Accepts a unit
         suffix (e.g. '2 GiB' or '4096 MiB'). Will be rounded up to the nearest
@@ -364,7 +377,9 @@ class YarnCluster(object):
         worker_env=None,
         worker_class=None,
         worker_options=None,
+        worker_gpus=None,
         scheduler_vcores=None,
+        scheduler_gpus=None,
         scheduler_memory=None,
         deploy_mode=None,
         name=None,
@@ -388,7 +403,9 @@ class YarnCluster(object):
             worker_env=worker_env,
             worker_class=worker_class,
             worker_options=worker_options,
+            worker_gpus=worker_gpus,
             scheduler_vcores=scheduler_vcores,
+            scheduler_gpus=scheduler_gpus,
             scheduler_memory=scheduler_memory,
             deploy_mode=deploy_mode,
             name=name,
