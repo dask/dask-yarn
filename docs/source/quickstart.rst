@@ -114,6 +114,12 @@ defined in the :doc:`configuration`.
     # Connect to the cluster
     client = Client(cluster)
 
+    # Do some work here
+
+    # Shutdown client and cluster (alternatively use context-manager as shown below):
+    client.shutdown()
+    cluster.shutdown()
+
 
 By default no workers are started on cluster creation. To change the number of
 workers, use the :func:`YarnCluster.scale` method. When scaling up, new workers
