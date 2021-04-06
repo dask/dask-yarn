@@ -454,7 +454,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     worker_class = os.environ.get("worker_class", "dask.distributed.Nanny")
     options = os.environ.get("worker_options", str(base64.b64encode(b"{}")))
 
-    # options come in a string
+    # options come in as a string
     # encode string as bytes
     # decode base64
     # load with json
@@ -477,6 +477,8 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     ]
     print(command)
     subprocess.check_call(command)
+
+    install_signal_handlers(loop)
 
 
 @subcommand(
