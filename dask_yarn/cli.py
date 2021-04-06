@@ -477,6 +477,7 @@ def worker(nthreads=None, memory_limit=None):  # pragma: nocover
     ]
     print(command)
     subprocess.check_call(command)
+    loop = IOLoop.current()
 
     install_signal_handlers(loop)
 
