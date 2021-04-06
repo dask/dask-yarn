@@ -3,7 +3,7 @@ sudo: required
 dist: trusty
 os: linux
 python:
-  - "3.8"
+  - "3.7"
 
 services:
   - docker
