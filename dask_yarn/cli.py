@@ -1,7 +1,9 @@
 import argparse
 import os
+import base64
 import shutil
 import subprocess
+import json
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -10,7 +12,7 @@ from urllib.parse import urlparse
 import skein
 from skein.utils import format_table, humanize_timedelta
 from tornado.ioloop import IOLoop, TimeoutError
-from distributed import Scheduler, Nanny
+from distributed import Scheduler
 from distributed.cli.utils import install_signal_handlers
 from distributed.proctitle import (
     enable_proctitle_on_children,
@@ -440,42 +442,44 @@ def scheduler():  # pragma: nocover
     ),
 )
 def worker(nthreads=None, memory_limit=None):  # pragma: nocover
-    enable_proctitle_on_current()
-    enable_proctitle_on_children()
-
     if memory_limit is None:
         memory_limit = int(skein.properties.container_resources.memory * 2 ** 20)
     if nthreads is None:
         nthreads = skein.properties.container_resources.vcores
 
+    worker_options = dict(memory_limit=memory_limit, nthreads=nthreads)
     app_client = skein.ApplicationClient.from_current()
 
     scheduler = app_client.kv.wait("dask.scheduler").decode()
+    worker_class = os.environ.get("worker_class", "dask.distributed.Nanny")
+    options = os.environ.get("worker_options", str(base64.b64encode(b"{}")))
 
+    # options come in as a string
+    # encode string as bytes
+    # decode base64
+    # load with json
+    options = base64.b64decode(options.encode())
+    worker_options.update(json.loads(options))
+    print(worker_options)
+    command = [
+        sys.executable,
+        "-m",
+        "distributed.cli.dask_spec",
+        scheduler,
+        "--spec",
+        "%s"  # in yaml double single quotes escape the single quote
+        % json.dumps(
+            {
+                "cls": worker_class,
+                "opts": {"name": skein.properties.container_id, **worker_options},
+            }
+        ),
+    ]
+    print(command)
+    subprocess.check_call(command)
     loop = IOLoop.current()
 
-    worker = Nanny(
-        scheduler,
-        loop=loop,
-        memory_limit=memory_limit,
-        worker_port=0,
-        nthreads=nthreads,
-        name=skein.properties.container_id,
-    )
-
-    async def cleanup():
-        await worker.close(timeout=2)
-
-    install_signal_handlers(loop, cleanup=cleanup)
-
-    async def run():
-        await worker
-        await worker.finished()
-
-    try:
-        loop.run_sync(run)
-    except (KeyboardInterrupt, TimeoutError):
-        pass
+    install_signal_handlers(loop)
 
 
 @subcommand(

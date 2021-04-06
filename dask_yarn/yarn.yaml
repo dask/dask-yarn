@@ -17,6 +17,7 @@ yarn:
   scheduler:                 # Specifications of scheduler container
     vcores: 1
     memory: 2GiB
+    gpus: 0                 # Number of GPUs requested
 
   worker:                   # Specifications of worker containers
     vcores: 1
@@ -24,8 +25,12 @@ yarn:
     count: 0                # Number of workers to start on initialization
     restarts: -1            # Allowed number of restarts, -1 for unlimited
     env: {}                 # A map of environment variables to set on the worker
+    gpus: 0                 # Number of GPUs requested
+    worker_class: "dask.distributed.Nanny" # The kind of worker to launch
+    worker_options: {}      # A map of options to pass to the worker
 
   client:                   # Specification of client container
     vcores: 1
     memory: 2GiB
+    gpus: 0                 # Number of GPUs requested
     env: {}                 # A map of environment variables ot set on the client

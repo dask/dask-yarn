@@ -35,9 +35,10 @@ def test_basic(deploy_mode, skein_client, conda_env):
         skein_client=skein_client,
         dashboard_address=":8787",
         port=8786,
+        worker_options={"resources": {"FOO": "BAZ"}},
+        worker_class="dask.distributed.Nanny",
     ) as cluster:
         # Smoketest repr
-        repr(cluster)
 
         if bokeh_installed:
             assert cluster.dashboard_link is not None
@@ -54,6 +55,8 @@ def test_basic(deploy_mode, skein_client, conda_env):
             future = client.submit(inc, 10)
             assert future.result() == 11
             client.get_versions(check=True)
+            resource_tags = client.run(lambda dask_worker: dask_worker.total_resources)
+            assert {"FOO": "BAZ"} in list(resource_tags.values())
 
         # Check that 2 workers exist
         start = time.time()
@@ -230,9 +233,12 @@ def test_configuration(deploy_mode):
                 "count": 1,
                 "vcores": 1,
                 "restarts": -1,
+                "gpus": 2,
                 "env": {"foo": "bar"},
+                "worker_class": "abc",
+                "worker_options": {"FOO": "BAZ"},
             },
-            "scheduler": {"memory": "1234 MiB", "vcores": 1},
+            "scheduler": {"memory": "1234 MiB", "vcores": 1, "gpus": 0},
             "host": "0.0.0.0",
             "port": 8786,
             "dashboard_address": ":8787",
@@ -246,9 +252,16 @@ def test_configuration(deploy_mode):
         assert spec.queue == "myqueue"
         assert spec.tags == {"a", "b", "c"}
         assert spec.services["dask.worker"].resources.memory == 1234
-        assert spec.services["dask.worker"].env == {"foo": "bar"}
+        assert spec.services["dask.worker"].resources.gpus == 2
+        assert spec.services["dask.worker"].env == {
+            "foo": "bar",
+            "worker_class": "abc",
+            "worker_options": "eyJGT08iOiAiQkFaIn0=",
+        }
+
         if deploy_mode == "remote":
             assert spec.services["dask.scheduler"].resources.memory == 1234
+            assert spec.services["dask.scheduler"].resources.gpus == 0
         else:
             assert "dask.scheduler" not in spec.services
 
