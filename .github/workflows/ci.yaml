@@ -1,4 +1,5 @@
 name: "CI"
+
 on: [pull_request, push]
 
 jobs:
@@ -19,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout Source
-      - uses: actions/checkout@main
+        uses: actions/checkout@v2
 
       - name: Install dependencies
         run: |
@@ -31,14 +32,18 @@ jobs:
           # No-op to ensure fixuid runs in a more robust way
           htcluster exec -- pwd
 
-      - name: Start Cluster
+      - name: Install Dask-Yarn
+        shell: bash -l {0}
         run: htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
 
+
+      - name: Kerberos Init
+        if: ${{ matrix.cluster-config == 'kerberos' }}
+        run: htcluster exec -- kinit testuser -kt testuser.keytab
+
       - name: Test!
+        shell: bash -l {0}
         run: |
-          export CONDA_ENV=/home/testuser/miniconda/envs/test-environment
-          if [[ "$CLUSTER_CONFIG" == "kerberos" ]]; then
-              htcluster exec -- kinit testuser -kt testuser.keytab
-          fi
+          CONDA_ENV=/home/testuser/miniconda/envs/test-environment\
           htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
 
