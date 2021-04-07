@@ -254,7 +254,7 @@ def test_configuration(deploy_mode):
         assert spec.name == "dask-yarn-tests"
         assert spec.user == "alice"
         assert spec.queue == "myqueue"
-        assert spec.tags == {"a", "b", "c"}
+        assert spec.tags == {"a", "b", "c", "dask-yarn"}  # dask-yarn is a default tag
         assert spec.services["dask.worker"].resources.memory == 1234
         assert spec.services["dask.worker"].resources.gpus == 2
         assert spec.services["dask.worker"].env == {
@@ -586,7 +586,7 @@ async def test_from_name(skein_client, conda_env):
         worker_options={"resources": {"FOO": "BAZ"}},
         worker_class="dask.distributed.Nanny",
     )
-    await cluster.scale(1)
+    cluster.scale(1)
     name = cluster.application_client.name
 
     # Check cluster listed in discovery
