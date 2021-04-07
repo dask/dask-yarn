@@ -170,6 +170,7 @@ def _make_specification(**kwargs):
     name = lookup(kwargs, "name", "yarn.name")
     queue = lookup(kwargs, "queue", "yarn.queue")
     tags = lookup(kwargs, "tags", "yarn.tags")
+    tags.add("dask-yarn")
     user = lookup(kwargs, "user", "yarn.user")
 
     environment = lookup(kwargs, "environment", "yarn.environment")
@@ -530,6 +531,12 @@ class YarnCluster(object):
             skein_client=skein_client,
         )
         return self
+
+    @classmethod
+    def from_name(cls, name, skein_client=None, asynchronous=False, loop=None):
+        return cls.from_application_id(
+            app_id=name, skein_client=skein_client, asynchronous=asynchronous, loop=loop
+        )
 
     def _init_common(
         self,
@@ -1114,3 +1121,11 @@ class Adaptive(AdaptiveCore):
     @property
     def loop(self):
         return self.cluster.loop
+
+
+async def discover(skein_client=None):
+    skein_client = _get_skein_client(skein_client)
+    apps = skein_client.get_applications()
+    for app in apps:
+        if "dask-yarn" in app.tags:
+            yield (app.name, YarnCluster)

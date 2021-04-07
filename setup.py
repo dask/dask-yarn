@@ -21,6 +21,8 @@ setup(
     entry_points="""
         [console_scripts]
         dask-yarn=dask_yarn.cli:main
+        [dask_cluster_discovery]
+        yarncluster=dask_yarn.core:discover
       """,
     zip_safe=False,
 )

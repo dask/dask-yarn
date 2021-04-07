@@ -14,6 +14,10 @@ from dask_yarn.core import (
     _make_submit_specification,
     _make_scheduler_kwargs,
 )
+from dask_ctl.discovery import (
+    list_discovery_methods,
+    discover_cluster_names,
+)
 from .conftest import check_is_shutdown
 
 try:
@@ -565,3 +569,50 @@ def test_logs(conda_env, skein_client):
         assert len(logs) == 2
 
     check_is_shutdown(skein_client, cluster.app_id)
+
+
+@pytest.mark.asyncio
+async def test_from_name(skein_client, conda_env):
+    # Create cluster
+    cluster = YarnCluster(
+        environment=conda_env,
+        deploy_mode="remote",
+        worker_memory="512 MiB",
+        scheduler_memory="512 MiB",
+        name="test-basic",
+        skein_client=skein_client,
+        dashboard_address=":8787",
+        port=8786,
+        worker_options={"resources": {"FOO": "BAZ"}},
+        worker_class="dask.distributed.Nanny",
+    )
+    await cluster.scale(1)
+    name = cluster.application_client.name
+
+    # Check cluster listed in discovery
+    discovery = "yarncluster"
+    assert discovery in list_discovery_methods()
+    clusters_names = [
+        cluster async for cluster in discover_cluster_names(discovery=discovery)
+    ]
+    assert len(clusters_names) == 1
+    discovered_name, discovered_class = clusters_names[0]
+    assert discovered_name == name
+    assert discovered_class == YarnCluster
+
+    # Delete cluster manager
+    del cluster
+
+    # Recreate cluster manager from name
+    cluster = await YarnCluster.from_name(name, asynchronous=True)
+    assert "id" in cluster.scheduler_info
+
+    # Ensure work can be run on cluster
+    async with Client(cluster, asynchronous=True) as client:
+        # Ensure that inter-worker communication works well
+        futures = client.map(lambda x: x + 1, range(10))
+        total = client.submit(sum, futures)
+        assert (await total) == sum(map(lambda x: x + 1, range(10)))
+        assert all((await client.has_what()).values())
+
+    cluster.shutdown()
