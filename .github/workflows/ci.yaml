@@ -32,7 +32,7 @@ jobs:
           # Start the test cluster
           htcluster startup --image cdh6 --mount .:dask-yarn --config $CLUSTER_CONFIG
           # No-op to ensure fixuid runs in a more robust way
-          htcluster exec -- ls ./dask-yarn
+          htcluster exec -- ls /home/testuser/dask-yarn
 
       - name: Install Dask-Yarn
         shell: bash -l {0}
