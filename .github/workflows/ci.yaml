@@ -17,6 +17,7 @@ jobs:
     env:
       CLUSTER_CONFIG: ${{ matrix.cluster-config }}
       PYTHON: ${{ matrix.python-version}}
+      COMPOSE_INTERACTIVE_NO_CLI: 1
 
     steps:
       - name: Checkout Source
@@ -36,7 +37,6 @@ jobs:
         shell: bash -l {0}
         run: htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
 
-
       - name: Kerberos Init
         if: ${{ matrix.cluster-config == 'kerberos' }}
         run: htcluster exec -- kinit testuser -kt testuser.keytab
@@ -46,4 +46,3 @@ jobs:
         run: |
           CONDA_ENV=/home/testuser/miniconda/envs/test-environment\
           htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
-
