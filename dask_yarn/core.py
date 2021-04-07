@@ -169,8 +169,7 @@ def _make_specification(**kwargs):
 
     name = lookup(kwargs, "name", "yarn.name")
     queue = lookup(kwargs, "queue", "yarn.queue")
-    tags = lookup(kwargs, "tags", "yarn.tags")
-    tags.add("dask-yarn")
+    tags = lookup(kwargs, "tags", "yarn.tags").append("dask-yarn")
     user = lookup(kwargs, "user", "yarn.user")
 
     environment = lookup(kwargs, "environment", "yarn.environment")
