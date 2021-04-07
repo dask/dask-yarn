@@ -18,6 +18,7 @@ jobs:
       CLUSTER_CONFIG: ${{ matrix.cluster-config }}
       PYTHON: ${{ matrix.python-version}}
       COMPOSE_INTERACTIVE_NO_CLI: 1
+      COMPOSE_DISABLE_TTY: 1
 
     steps:
       - name: Checkout Source
@@ -27,7 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Install the test cluster
-          pip install git+https://github.com/jcrist/hadoop-test-cluster.git
+          pip install git+https://github.com/jacobtomlinson/hadoop-test-cluster.git@disable-tty
           # Start the test cluster
           htcluster startup --image cdh6 --mount .:dask-yarn --config $CLUSTER_CONFIG
           # No-op to ensure fixuid runs in a more robust way
