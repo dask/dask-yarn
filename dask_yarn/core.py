@@ -10,15 +10,17 @@ from contextlib import contextmanager
 from urllib.parse import urlparse
 
 import dask
+from dask.utils import (
+    format_bytes,
+    parse_timedelta
+)
 from distributed.core import rpc
 from distributed.deploy.adaptive_core import AdaptiveCore
 from distributed.scheduler import Scheduler
 from distributed.utils import (
-    format_bytes,
     log_errors,
     LoopRunner,
     format_dashboard_link,
-    parse_timedelta,
     Log,
     Logs,
 )
