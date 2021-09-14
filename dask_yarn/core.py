@@ -169,7 +169,8 @@ def _make_specification(**kwargs):
 
     name = lookup(kwargs, "name", "yarn.name")
     queue = lookup(kwargs, "queue", "yarn.queue")
-    tags = lookup(kwargs, "tags", "yarn.tags").append("dask-yarn")
+    tags = lookup(kwargs, "tags", "yarn.tags")
+    tags.append("dask-yarn")
     user = lookup(kwargs, "user", "yarn.user")
 
     environment = lookup(kwargs, "environment", "yarn.environment")
@@ -982,7 +983,7 @@ class YarnCluster(object):
             return _widget_status_template % (n_workers, cores, format_bytes(memory))
 
     def _widget(self):
-        """ Create IPython widget for display within a notebook """
+        """Create IPython widget for display within a notebook"""
         try:
             return self._cached_widget
         except AttributeError:

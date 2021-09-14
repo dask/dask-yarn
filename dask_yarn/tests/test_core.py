@@ -587,7 +587,7 @@ async def test_from_name(skein_client, conda_env):
         worker_class="dask.distributed.Nanny",
     )
     cluster.scale(1)
-    name = cluster.application_client.name
+    name = cluster.app_id
 
     # Check cluster listed in discovery
     discovery = "yarncluster"
