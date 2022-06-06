@@ -19,4 +19,6 @@ html_theme = "dask_sphinx_theme"
 templates_path = ["_templates"]
 html_static_path = ["_static"]
 htmlhelp_basename = "dask-yarndoc"
-pygments_style = "default"
+# Commenting this out for now, if we register dask pygments,
+# then eventually this line can be:
+# pygments_style = "dask"
