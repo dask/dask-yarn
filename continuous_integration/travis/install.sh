@@ -8,6 +8,7 @@ conda create -n test-environment -c conda-forge \
     cryptography \
     dask \
     distributed \
+    dask-ctl \
     flake8 \
     nomkl \
     pytest \
