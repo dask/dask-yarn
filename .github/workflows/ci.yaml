@@ -1,0 +1,49 @@
+name: "CI"
+
+on: [pull_request, push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: 3.8
+            cluster-config: simple
+          - python-version: 3.7
+            cluster-config: kerberos
+
+    env:
+      CLUSTER_CONFIG: ${{ matrix.cluster-config }}
+      PYTHON: ${{ matrix.python-version}}
+      COMPOSE_INTERACTIVE_NO_CLI: 1
+      COMPOSE_DISABLE_TTY: 1
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install the test cluster
+          pip install git+https://github.com/jacobtomlinson/hadoop-test-cluster.git@disable-tty
+          # Start the test cluster
+          htcluster startup --image cdh6 --mount .:dask-yarn --config $CLUSTER_CONFIG
+          # No-op to ensure fixuid runs in a more robust way
+          htcluster exec -- ls /home/testuser/dask-yarn
+
+      - name: Install Dask-Yarn
+        shell: bash -l {0}
+        run: htcluster exec -- ./dask-yarn/continuous_integration/travis/install.sh $PYTHON
+
+      - name: Kerberos Init
+        if: ${{ matrix.cluster-config == 'kerberos' }}
+        run: htcluster exec -- kinit testuser -kt testuser.keytab
+
+      - name: Test!
+        shell: bash -l {0}
+        run: |
+          CONDA_ENV=/home/testuser/miniconda/envs/test-environment\
+          htcluster exec -- ./dask-yarn/continuous_integration/travis/run-tests.sh
