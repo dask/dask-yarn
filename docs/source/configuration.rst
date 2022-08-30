@@ -69,7 +69,7 @@ In the ``script`` section for each service, the appropriate ``dask-yarn``
 :doc:`cli` command should be used:
 
 - ``dask-yarn services worker`` to start the worker
-- ``dask-yarn services scheduler`` to start the worker
+- ``dask-yarn services scheduler`` to start the scheduler
 
 Beyond that, you have full flexibility for how to define a specification. See
 the Skein_ documentation for more information. A few examples are provided
@@ -137,7 +137,7 @@ service.
        # and also run a custom script before starting the service
        script: |
          some-custom-initialization-script
-         dask-yarn services worker
+         dask-yarn services scheduler
 
      dask.worker:
        # Don't start any workers initially
