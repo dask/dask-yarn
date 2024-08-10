@@ -14,7 +14,9 @@ from dask.utils import (
     format_bytes,
     parse_timedelta
 )
+from distributed import SpecCluster
 from distributed.core import rpc
+from distributed.deploy import ProcessInterface
 from distributed.deploy.adaptive_core import AdaptiveCore
 from distributed.scheduler import Scheduler
 from distributed.utils import (
@@ -289,7 +291,44 @@ def _make_scheduler_kwargs(**kwargs):
     return {"host": host, "port": port, "dashboard_address": dashboard_address}
 
 
-class YarnCluster(object):
+class YarnProcess(ProcessInterface):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.service_name = None
+        self.cli: skein.ApplicationClient = skein.ApplicationClient.from_current()
+        self.container = None
+        _ = kwargs
+
+    async def close(self):
+        self.cli.kill_container(self.container)
+        await super().close()
+
+
+class DaskYarnScheduler(YarnProcess):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.service_name: str = "dask.scheduler"
+        self.container = None
+        _ = kwargs
+
+    async def start(self):
+        self.cli.scale(self.service_name, count=1)
+        self.address = self.cli.kv.wait("dask.scheduler").decode()
+        self.container = self.cli.get_containers(services=[self.service_name])[0].id
+        await super().start()
+
+
+class DaskYarnWorker(YarnProcess):
+    def __init__(self, address, **kwargs):
+        super().__init__()
+        self.service_name: str = "dask.worker"
+        _ = kwargs, address
+
+    async def start(self):
+        self.container = self.cli.add_container(self.service_name).id
+        await super().start()
+
+class YarnCluster(SpecCluster):
     """Start a Dask cluster on YARN.
 
     You can define default values for this in Dask's ``yarn.yaml``
@@ -369,61 +408,13 @@ class YarnCluster(object):
     >>> cluster.scale(10)
     """
 
-    def __init__(
-        self,
-        environment=None,
-        n_workers=None,
-        worker_vcores=None,
-        worker_memory=None,
-        worker_restarts=None,
-        worker_env=None,
-        worker_class=None,
-        worker_options=None,
-        worker_gpus=None,
-        scheduler_vcores=None,
-        scheduler_gpus=None,
-        scheduler_memory=None,
-        deploy_mode=None,
-        name=None,
-        queue=None,
-        tags=None,
-        user=None,
-        host=None,
-        port=None,
-        dashboard_address=None,
-        skein_client=None,
-        asynchronous=False,
-        loop=None,
-    ):
-
-        spec = _make_specification(
-            environment=environment,
-            n_workers=n_workers,
-            worker_vcores=worker_vcores,
-            worker_memory=worker_memory,
-            worker_restarts=worker_restarts,
-            worker_env=worker_env,
-            worker_class=worker_class,
-            worker_options=worker_options,
-            worker_gpus=worker_gpus,
-            scheduler_vcores=scheduler_vcores,
-            scheduler_gpus=scheduler_gpus,
-            scheduler_memory=scheduler_memory,
-            deploy_mode=deploy_mode,
-            name=name,
-            queue=queue,
-            tags=tags,
-            user=user,
+    def __init__(self, security=None):
+        super().__init__(
+            scheduler={"cls": DaskYarnScheduler, "options": {}},
+            worker={"cls": DaskYarnWorker, "options": {}},
+            security=security,
         )
-        self._init_common(
-            spec=spec,
-            host=host,
-            port=port,
-            dashboard_address=dashboard_address,
-            asynchronous=asynchronous,
-            loop=loop,
-            skein_client=skein_client,
-        )
+        self.spec = skein.ApplicationClient.from_current().get_specification()
 
     @classmethod
     def from_specification(cls, spec, skein_client=None, asynchronous=False, loop=None):
